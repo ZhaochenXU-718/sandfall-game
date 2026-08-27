@@ -1,0 +1,25 @@
+# Cocos Creator
+library/
+local/
+temp/
+build/
+profiles/
+native/engine/
+
+# Dependencies and tooling
+node_modules/
+coverage/
+dist/
+*.log
+
+# Editors and operating systems
+.DS_Store
+.idea/
+.vscode/settings.json
+
+# Secrets and platform-local configuration
+.env
+.env.*
+!.env.example
+project.private.config.json
+
