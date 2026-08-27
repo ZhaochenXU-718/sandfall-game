@@ -167,6 +167,8 @@ interface RulesConfig {
   colorCount: number;
   fixedHz: number;
   stableTicks: number;
+  normalFallIntervalMs: number;
+  softDropIntervalMs: number;
   lockDelayMs: number;
   maxLockResets: number;
 }
@@ -256,4 +258,3 @@ sandfall.analytics-consent.v1
 - `rendering/input/ui` 可以依赖 Cocos 和 `application` 的只读状态。
 - `platform` 可以调用平台 SDK，但不能直接修改游戏状态。
 - 不允许从核心层导入 `wx`、`tt`、浏览器 DOM 或原生桥接代码。
-
