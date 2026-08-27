@@ -1,0 +1,8 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": "assets/scripts"
+  },
+  "include": ["assets/scripts/**/*.ts"],
+  "exclude": ["tests"]
+}
