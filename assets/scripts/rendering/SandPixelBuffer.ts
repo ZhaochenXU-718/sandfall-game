@@ -41,6 +41,7 @@ export class SandPixelBuffer {
 
   private readonly palette: readonly RgbaColor[];
   private readonly previousCells: Uint8Array;
+  private readonly previousGrainVariants: Uint8Array;
   private readonly previousFlashMask: Uint8Array;
   private readonly flipY: boolean;
   private readonly shadeStrength: number;
@@ -83,6 +84,7 @@ export class SandPixelBuffer {
     this.flipY = options.flipY ?? false;
     this.shadeStrength = shadeStrength;
     this.previousCells = new Uint8Array(this.width * this.height);
+    this.previousGrainVariants = new Uint8Array(this.width * this.height);
     this.previousFlashMask = new Uint8Array(this.width * this.height);
     this.pixels = new Uint8Array(this.width * this.height * 4);
   }
@@ -91,12 +93,16 @@ export class SandPixelBuffer {
     cells: Uint8Array,
     flashMask?: Uint8Array,
     flashIntensity = 0,
+    grainVariants?: Uint8Array,
   ): PixelBufferUpdateResult {
     if (cells.length !== this.previousCells.length) {
       throw new RangeError(`Expected ${this.previousCells.length} cells, got ${cells.length}`);
     }
     if (flashMask !== undefined && flashMask.length !== cells.length) {
       throw new RangeError(`Expected a flash mask of length ${cells.length}`);
+    }
+    if (grainVariants !== undefined && grainVariants.length !== cells.length) {
+      throw new RangeError(`Expected grain variants of length ${cells.length}`);
     }
     if (!Number.isFinite(flashIntensity) || flashIntensity < 0 || flashIntensity > 1) {
       throw new RangeError("Flash intensity must be between zero and one");
@@ -111,7 +117,14 @@ export class SandPixelBuffer {
       const flashed = flashMask?.[sourceIndex] !== undefined
         && flashMask[sourceIndex] !== 0;
       const previouslyFlashed = this.previousFlashMask[sourceIndex] !== 0;
-      const cellChanged = !this.initialized || colorId !== this.previousCells[sourceIndex];
+      const sourceX = sourceIndex % this.width;
+      const sourceY = Math.floor(sourceIndex / this.width);
+      const grainVariant = colorId === 0
+        ? 0
+        : grainVariants?.[sourceIndex] ?? coordinateGrainVariant(sourceX, sourceY, colorId);
+      const cellChanged = !this.initialized
+        || colorId !== this.previousCells[sourceIndex]
+        || grainVariant !== this.previousGrainVariants[sourceIndex];
       const flashChanged = flashed !== previouslyFlashed
         || ((flashed || previouslyFlashed) && flashIntensity !== this.previousFlashIntensity);
       if (!cellChanged && !flashChanged) {
@@ -123,14 +136,13 @@ export class SandPixelBuffer {
       }
 
       this.previousCells[sourceIndex] = colorId;
+      this.previousGrainVariants[sourceIndex] = grainVariant;
       this.previousFlashMask[sourceIndex] = flashed ? 1 : 0;
-      const sourceX = sourceIndex % this.width;
-      const sourceY = Math.floor(sourceIndex / this.width);
       const targetY = this.flipY ? this.height - 1 - sourceY : sourceY;
       const pixelOffset = (targetY * this.width + sourceX) * 4;
       const shade = colorId === 0
         ? 0
-        : grainShade(sourceX, sourceY, colorId, this.shadeStrength);
+        : grainShade(grainVariant, this.shadeStrength);
       this.pixels[pixelOffset] = flashChannel(shadeChannel(color.r, shade), flashed, flashIntensity);
       this.pixels[pixelOffset + 1] = flashChannel(
         shadeChannel(color.g, shade),
@@ -175,21 +187,17 @@ export class SandPixelBuffer {
   }
 }
 
-/** Stable coordinate noise keeps settled sand textured without allocating grain objects. */
-function grainShade(x: number, y: number, colorId: number, strength: number): number {
+function coordinateGrainVariant(x: number, y: number, colorId: number): number {
   let hash = Math.imul(x + colorId * 31, 0x045d9f3b)
     ^ Math.imul(y + colorId * 17, 0x119de1f3);
   hash ^= hash >>> 16;
-  switch (hash & 3) {
-    case 0:
-      return -strength;
-    case 1:
-      return -strength * 0.45;
-    case 2:
-      return 0;
-    default:
-      return strength * 0.7;
-  }
+  return hash & 0xff;
+}
+
+/** The variant moves with its grain, preventing texture shimmer during collapse. */
+function grainShade(variant: number, strength: number): number {
+  const centered = (variant / 255) * 2 - 1;
+  return centered < 0 ? centered * strength : centered * strength * 0.7;
 }
 
 function shadeChannel(channel: number, shade: number): number {

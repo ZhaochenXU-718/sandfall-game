@@ -6,6 +6,7 @@ export interface RulesConfig {
   readonly colorCount: number;
   readonly fixedHz: number;
   readonly stableTicks: number;
+  readonly sandSubsteps: number;
   readonly normalFallIntervalMs: number;
   readonly softDropIntervalMs: number;
   readonly lockDelayMs: number;
@@ -17,10 +18,11 @@ export const DEFAULT_RULES: Readonly<RulesConfig> = Object.freeze({
   version: "0.6.0",
   macroWidth: 10,
   macroHeight: 24,
-  grainsPerCell: 10,
+  grainsPerCell: 12,
   colorCount: 4,
   fixedHz: 60,
   stableTicks: 4,
+  sandSubsteps: 2,
   normalFallIntervalMs: 600,
   softDropIntervalMs: 50,
   lockDelayMs: 120,

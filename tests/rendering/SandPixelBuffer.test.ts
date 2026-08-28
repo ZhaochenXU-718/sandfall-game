@@ -76,6 +76,30 @@ describe("SandPixelBuffer", () => {
     expect(second.pixels).toEqual(first.pixels);
   });
 
+  it("keeps an explicit shade variant attached to a moving grain", () => {
+    const buffer = new SandPixelBuffer({
+      width: 2,
+      height: 1,
+      palette: PALETTE,
+      shadeStrength: 0.2,
+    });
+    buffer.update(
+      Uint8Array.from([1, 0]),
+      undefined,
+      0,
+      Uint8Array.from([37, 0]),
+    );
+    const shadeBeforeMove = buffer.pixels[0];
+
+    buffer.update(
+      Uint8Array.from([0, 1]),
+      undefined,
+      0,
+      Uint8Array.from([0, 37]),
+    );
+    expect(buffer.pixels[4]).toBe(shadeBeforeMove);
+  });
+
   it("keeps empty board pixels flat and validates texture strength", () => {
     const buffer = new SandPixelBuffer({
       width: 2,

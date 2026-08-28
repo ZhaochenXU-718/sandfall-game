@@ -30,8 +30,13 @@ for (let index = 0; index < cells.length; index += 1) {
 const board = new Board(WIDTH, HEIGHT, cells);
 const simulation = new SandSimulation(board, randomizer);
 const connectivity = new ConnectivityResolver(board);
-const simulationMs = averageMilliseconds(1_000, () => {
+const sandSubstepMs = averageMilliseconds(1_000, () => {
   simulation.step();
+});
+const sandFixedTickMs = averageMilliseconds(500, () => {
+  for (let substep = 0; substep < DEFAULT_RULES.sandSubsteps; substep += 1) {
+    simulation.step();
+  }
 });
 const connectivityMs = averageMilliseconds(500, () => {
   connectivity.resolve();
@@ -60,7 +65,8 @@ console.log(JSON.stringify({
   board: `${WIDTH}x${HEIGHT}`,
   fillRatio: 0.9,
   averageMilliseconds: {
-    sandTick: Number(simulationMs.toFixed(4)),
+    sandSubstep: Number(sandSubstepMs.toFixed(4)),
+    sandFixedTick: Number(sandFixedTickMs.toFixed(4)),
     connectivityScan: Number(connectivityMs.toFixed(4)),
     fullRgbaUpdate: Number(rgbaUpdateMs.toFixed(4)),
   },

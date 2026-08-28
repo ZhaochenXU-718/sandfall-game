@@ -58,4 +58,44 @@ describe("SandSimulation", () => {
     new SandSimulation(second, new Randomizer(99)).step();
     expect(first.snapshot()).toEqual(second.snapshot());
   });
+
+  it("keeps a collapsing ledge free of alternating horizontal spikes", () => {
+    const width = 28;
+    const height = 22;
+    const board = new Board(width, height);
+    for (let x = 0; x < width; x += 1) {
+      const supportTop = Math.min(height - 1, 10 + Math.floor(x * 0.45));
+      for (let y = supportTop; y < height; y += 1) {
+        board.set(x, y, 1);
+      }
+    }
+    for (let x = 0; x < 12; x += 1) {
+      for (let y = 2; y < 10; y += 1) {
+        board.set(x, y, 4);
+      }
+    }
+
+    const simulation = new SandSimulation(board, new Randomizer(123));
+    for (let step = 0; step < 18; step += 1) {
+      simulation.step();
+    }
+
+    const cells = board.snapshot();
+    const rightEdges: number[] = [];
+    for (let y = 0; y < height; y += 1) {
+      let rightEdge = -1;
+      for (let x = 0; x < width; x += 1) {
+        if (cells[y * width + x] === 4) {
+          rightEdge = x;
+        }
+      }
+      if (rightEdge >= 0) {
+        rightEdges.push(rightEdge);
+      }
+    }
+
+    for (let index = 1; index < rightEdges.length; index += 1) {
+      expect(Math.abs((rightEdges[index] ?? 0) - (rightEdges[index - 1] ?? 0))).toBeLessThanOrEqual(3);
+    }
+  });
 });

@@ -5,10 +5,16 @@ export {
   clearFlashIntensity,
 } from "./SandPixelBuffer";
 export { PieceVisualAnimator } from "./PieceVisualAnimator";
+export { layoutPiecePreview } from "./PiecePreviewLayout";
+export { sandifyGrainVisible } from "./SandifyDissolve";
 export type {
   PieceVisualAnimatorOptions,
   PieceVisualState,
 } from "./PieceVisualAnimator";
+export type {
+  PiecePreviewCell,
+  PiecePreviewLayout,
+} from "./PiecePreviewLayout";
 export type {
   PixelBufferUpdateResult,
   RgbaColor,

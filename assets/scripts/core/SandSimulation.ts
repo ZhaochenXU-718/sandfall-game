@@ -9,7 +9,6 @@ import type { SandStepResult } from "./types";
 export class SandSimulation {
   private readonly board: Board;
   private readonly randomizer: Randomizer;
-  private tick = 0;
   private readonly result: SandStepResult = {
     movedCount: 0,
     dirtyMinX: -1,
@@ -27,20 +26,19 @@ export class SandSimulation {
     this.board.resetMovedFlags();
     this.resetResult();
 
-    const scanParity = this.tick & 1;
-    this.tick += 1;
-
     for (let y = this.board.height - 2; y >= 0; y -= 1) {
-      // Adjacent rows use opposite directions, and every tick flips them all.
-      const scanLeftToRight = ((y + scanParity) & 1) === 0;
-      if (scanLeftToRight) {
-        for (let x = 0; x < this.board.width; x += 1) {
-          this.tryMove(x, y);
-        }
-      } else {
-        for (let x = this.board.width - 1; x >= 0; x -= 1) {
-          this.tryMove(x, y);
-        }
+      // A deterministic random start and direction avoids even/odd row bands
+      // while keeping replays reproducible for the same game seed.
+      const scanLeftToRight = this.randomizer.nextBoolean();
+      const startX = this.randomizer.nextInt(this.board.width);
+      for (let offset = 0; offset < this.board.width; offset += 1) {
+        const rawX = scanLeftToRight ? startX + offset : startX - offset;
+        const x = rawX >= this.board.width
+          ? rawX - this.board.width
+          : rawX < 0
+            ? rawX + this.board.width
+            : rawX;
+        this.tryMove(x, y);
       }
     }
 

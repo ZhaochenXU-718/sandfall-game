@@ -5,6 +5,7 @@ export class Board {
   public readonly height: number;
 
   private readonly cells: Uint8Array;
+  private readonly grainVariants: Uint8Array;
   private readonly movedFlags: Uint8Array;
 
   public constructor(width: number, height: number, initialCells?: Uint8Array) {
@@ -23,6 +24,11 @@ export class Board {
     this.width = width;
     this.height = height;
     this.cells = initialCells?.slice() ?? new Uint8Array(size);
+    this.grainVariants = new Uint8Array(size);
+    for (let index = 0; index < size; index += 1) {
+      const color = this.cells[index] ?? 0;
+      this.grainVariants[index] = color === 0 ? 0 : initialGrainVariant(index, color);
+    }
     this.movedFlags = new Uint8Array(size);
   }
 
@@ -64,6 +70,7 @@ export class Board {
     this.assertIndex(index);
     this.assertColor(color);
     this.cells[index] = color;
+    this.grainVariants[index] = color === 0 ? 0 : initialGrainVariant(index, color);
   }
 
   public swap(a: number, b: number): void {
@@ -71,11 +78,20 @@ export class Board {
     this.assertIndex(b);
     const valueA = this.cells[a];
     const valueB = this.cells[b];
-    if (valueA === undefined || valueB === undefined) {
+    const variantA = this.grainVariants[a];
+    const variantB = this.grainVariants[b];
+    if (
+      valueA === undefined
+      || valueB === undefined
+      || variantA === undefined
+      || variantB === undefined
+    ) {
       throw new RangeError("Cell index is outside the board");
     }
     this.cells[a] = valueB;
     this.cells[b] = valueA;
+    this.grainVariants[a] = variantB;
+    this.grainVariants[b] = variantA;
   }
 
   public clearMarked(mask: Uint8Array): number {
@@ -87,6 +103,7 @@ export class Board {
     for (let index = 0; index < this.size; index += 1) {
       if (mask[index] !== 0 && this.cells[index] !== 0) {
         this.cells[index] = 0;
+        this.grainVariants[index] = 0;
         cleared += 1;
       }
     }
@@ -114,6 +131,13 @@ export class Board {
       throw new RangeError(`Expected a target of length ${this.size}, got ${target.length}`);
     }
     target.set(this.cells);
+  }
+
+  public copyGrainVariantsTo(target: Uint8Array): void {
+    if (target.length !== this.size) {
+      throw new RangeError(`Expected a target of length ${this.size}, got ${target.length}`);
+    }
+    target.set(this.grainVariants);
   }
 
   /** Internal simulation workspace. Kept on Board so it is allocated only once. */
@@ -146,4 +170,12 @@ export class Board {
       throw new RangeError(`Color ${color} must be an integer between 0 and 255`);
     }
   }
+}
+
+function initialGrainVariant(index: number, color: ColorId): number {
+  let hash = Math.imul(index + color * 0x9e37, 0x45d9f3b);
+  hash ^= hash >>> 16;
+  hash = Math.imul(hash, 0x45d9f3b);
+  hash ^= hash >>> 16;
+  return (hash & 0xff) || 1;
 }

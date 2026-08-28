@@ -34,4 +34,20 @@ describe("Board", () => {
     board.copyTo(target);
     expect(target).toEqual(Uint8Array.from([3, 4]));
   });
+
+  it("moves visual variants with grains and clears them with their color", () => {
+    const board = new Board(2, 1, Uint8Array.from([3, 0]));
+    const before = new Uint8Array(2);
+    const after = new Uint8Array(2);
+    board.copyGrainVariantsTo(before);
+
+    expect(before[0]).not.toBe(0);
+    board.swap(0, 1);
+    board.copyGrainVariantsTo(after);
+    expect(after).toEqual(Uint8Array.from([0, before[0] ?? 0]));
+
+    board.clearMarked(Uint8Array.from([0, 1]));
+    board.copyGrainVariantsTo(after);
+    expect(after).toEqual(new Uint8Array(2));
+  });
 });

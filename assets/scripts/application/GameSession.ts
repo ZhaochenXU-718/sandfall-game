@@ -256,6 +256,10 @@ export class GameSession {
     this.board.copyTo(target);
   }
 
+  public copyGrainVariantsTo(target: Uint8Array): void {
+    this.board.copyGrainVariantsTo(target);
+  }
+
   /** Copies the component selected for clearing; returns false outside the clear effect. */
   public copyClearMaskTo(target: Uint8Array): boolean {
     if (target.length !== this.board.width * this.board.height) {
@@ -368,8 +372,15 @@ export class GameSession {
   }
 
   private tickResolving(): void {
-    const step = this.sandSimulation.step();
-    this.stableDetector.update(step.movedCount);
+    let movedCount = 0;
+    for (let substep = 0; substep < this.rules.sandSubsteps; substep += 1) {
+      const step = this.sandSimulation.step();
+      movedCount += step.movedCount;
+      if (step.movedCount === 0) {
+        break;
+      }
+    }
+    this.stableDetector.update(movedCount);
     if (!this.stableDetector.isStable) {
       return;
     }
@@ -492,6 +503,7 @@ export class GameSession {
       rules.colorCount,
       rules.fixedHz,
       rules.stableTicks,
+      rules.sandSubsteps,
     ];
     if (positiveIntegers.some((value) => !Number.isInteger(value) || value <= 0)) {
       throw new RangeError("Board, color, frequency, and stability rules must be positive integers");

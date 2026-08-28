@@ -14,6 +14,7 @@ function rules(overrides: Partial<RulesConfig> = {}): RulesConfig {
     colorCount: 5,
     fixedHz: 10,
     stableTicks: 1,
+    sandSubsteps: 1,
     normalFallIntervalMs: 100,
     softDropIntervalMs: 20,
     lockDelayMs: 100,
@@ -108,6 +109,27 @@ describe("GameSession", () => {
     session.setSoftDrop(true);
     session.tick(STEP);
     expect(session.activePiece?.y).toBe(1);
+  });
+
+  it("promotes the advertised next piece on the following spawn", () => {
+    const session = new GameSession({
+      rules: rules({ macroWidth: 6, macroHeight: 10 }),
+      pieces: [I_PIECE, O_PIECE],
+    });
+    session.start(31);
+    session.tick(STEP);
+    const advertised = session.nextPiece;
+
+    expect(advertised).toBeDefined();
+    session.hardDrop();
+    for (let tick = 0; tick < 100 && session.phase !== "Spawning"; tick += 1) {
+      session.tick(STEP);
+    }
+    expect(session.phase).toBe("Spawning");
+    session.tick(STEP);
+
+    expect(session.activePiece?.definition.id).toBe(advertised?.definition.id);
+    expect(session.activePiece?.color).toBe(advertised?.color);
   });
 
   it("exposes continuous fall progress and preserves it when fall speed changes", () => {
