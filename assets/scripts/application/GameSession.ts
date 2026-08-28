@@ -200,6 +200,10 @@ export class GameSession {
     return this.board.snapshot();
   }
 
+  public copyBoardTo(target: Uint8Array): void {
+    this.board.copyTo(target);
+  }
+
   private spawnNextPiece(): void {
     const candidate = this.upcomingPiece;
     const randomizer = this.pieceRandomizer;

@@ -27,4 +27,11 @@ describe("Board", () => {
     snapshot[0] = 9;
     expect(board.get(0, 0)).toBe(1);
   });
+
+  it("copies cells into a caller-owned reusable buffer", () => {
+    const board = new Board(2, 1, Uint8Array.from([3, 4]));
+    const target = new Uint8Array(2);
+    board.copyTo(target);
+    expect(target).toEqual(Uint8Array.from([3, 4]));
+  });
 });

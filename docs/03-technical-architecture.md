@@ -10,7 +10,7 @@
 
 ## 2. 技术栈
 
-- 引擎：Cocos Creator 4.0 LTS
+- 引擎：Cocos Creator 3.8.8
 - 语言：TypeScript
 - 渲染：Cocos 2D + 单张动态 `Texture2D`
 - 核心数据：TypedArray
@@ -214,4 +214,3 @@ assets/
 docs/
 tools/
 ```
-

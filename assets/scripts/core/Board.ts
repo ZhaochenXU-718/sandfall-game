@@ -109,6 +109,13 @@ export class Board {
     return this.cells.slice();
   }
 
+  public copyTo(target: Uint8Array): void {
+    if (target.length !== this.size) {
+      throw new RangeError(`Expected a target of length ${this.size}, got ${target.length}`);
+    }
+    target.set(this.cells);
+  }
+
   /** Internal simulation workspace. Kept on Board so it is allocated only once. */
   public resetMovedFlags(): void {
     this.movedFlags.fill(0);

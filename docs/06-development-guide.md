@@ -2,15 +2,15 @@
 
 ## 1. 环境要求
 
-- Cocos Creator 4.0 LTS
+- Cocos Creator 3.8.8
 - Git
-- Node.js 版本使用 Cocos Creator 当前支持的版本
+- Node.js 24.20.0（由 `.node-version` 固定，使用 fnm 管理）
 - 微信开发者工具（构建微信小游戏时）
 - 抖音开发者工具（构建抖音小游戏时）
 - Xcode（构建 iOS 时）
 - Android Studio 和对应 SDK/NDK（构建 Android 时）
 
-具体版本在创建工程时记录到 `docs/environment.md`，CI 与本地保持一致。
+具体版本记录在 `docs/environment.md`，CI 与本地保持一致。进入仓库前若尚未启用 fnm，在 zsh 中执行 `eval "$(fnm env --use-on-cd --shell zsh)"`；随后 `fnm use` 会读取 `.node-version`。
 
 ## 2. 初始化步骤
 
@@ -103,4 +103,3 @@ AppID、服务端地址和广告位 ID 通过环境配置注入，不硬编码�
 - 无新增 TypeScript、构建或运行时错误。
 - 性能未超过预算，或记录了接受偏差的理由。
 - 相关文档、配置和埋点已同步更新。
-

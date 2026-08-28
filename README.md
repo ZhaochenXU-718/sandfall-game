@@ -4,17 +4,22 @@
 
 ## 当前状态
 
-项目已实现可独立测试的 TypeScript 核心回合，包含确定性随机袋、方块操控与锁定、原子沙化、沙粒重力、稳定检测、八方向消除、连锁及游戏状态机。Cocos Creator 场景工程尚未初始化。
+项目已实现可独立测试的 TypeScript 核心回合，并提供固定步长驱动、单纹理 RGBA 渲染缓冲和 Cocos Creator 3.8.8 原型组件。场景资源与 Web 预览仍待编辑器内完成。
 
 ## 核心层开发
 
 ```bash
+eval "$(fnm env --use-on-cd --shell zsh)"
+fnm use
 npm install
 npm test
 npm run typecheck
+npm run benchmark
 ```
 
 核心代码位于 `assets/scripts/core/`，不依赖 Cocos 或平台 API，可先独立测试，再接入 Cocos 场景。
+
+Cocos 原型的场景接入步骤见 [`docs/cocos-prototype-setup.md`](docs/cocos-prototype-setup.md)。
 
 ## 目标平台
 
@@ -25,7 +30,7 @@ npm run typecheck
 
 ## 技术方向
 
-- Cocos Creator 4.0 LTS
+- Cocos Creator 3.8.8
 - TypeScript
 - `Uint8Array` 沙盘数据
 - 固定时间步长的二维元胞自动机

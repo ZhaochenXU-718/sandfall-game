@@ -137,9 +137,8 @@ function createPlatformService(): PlatformService {
 ## 12. 官方参考
 
 - [Cocos Creator 跨平台发布](https://docs.cocos.com/creator/3.8/manual/en/editor/publish/index.html)
-- [Cocos Creator 发布到 Web](https://docs.cocos.com/creator/4.0/manual/zh/editor/publish/publish-web.html)
-- [Cocos Creator 发布到微信小游戏](https://docs.cocos.com/creator/4.0/manual/zh/editor/publish/publish-wechatgame.html)
-- [Cocos Creator 发布到抖音小游戏](https://docs.cocos.com/creator/4.0/manual/zh/editor/publish/publish-bytedance-mini-game.html)
-- [Cocos Creator 小游戏分包](https://docs.cocos.com/creator/4.0/manual/zh/editor/publish/subpackage.html)
+- [Cocos Creator 发布到 Web](https://docs.cocos.com/creator/3.8/manual/zh/editor/publish/publish-web.html)
+- [Cocos Creator 发布到微信小游戏](https://docs.cocos.com/creator/3.8/manual/zh/editor/publish/publish-wechatgame.html)
+- [Cocos Creator 发布到抖音小游戏](https://docs.cocos.com/creator/3.8/manual/zh/editor/publish/publish-bytedance-mini-game.html)
+- [Cocos Creator 小游戏分包](https://docs.cocos.com/creator/3.8/manual/zh/editor/publish/subpackage.html)
 - [抖音小游戏开发指南](https://developer.open-douyin.com/docs/resource/zh-CN/mini-game/develop/guide/dev-guide/bytedance-mini-game)
-
