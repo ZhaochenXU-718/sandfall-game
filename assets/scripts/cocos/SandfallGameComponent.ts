@@ -7,10 +7,14 @@ import {
   input,
   Input,
   KeyCode,
+  Node,
+  profiler,
+  ResolutionPolicy,
   Sprite,
   SpriteFrame,
   Texture2D,
   UITransform,
+  view,
 } from "cc";
 import { FixedStepRunner } from "../application/FixedStepRunner";
 import { GameSession } from "../application/GameSession";
@@ -37,9 +41,9 @@ export class SandfallGameComponent extends Component {
   private readonly pressedKeys = new Set<KeyCode>();
 
   protected onLoad(): void {
-    if (this.sandSprite === null || this.pieceGraphics === null) {
-      throw new Error("SandfallGameComponent requires sandSprite and pieceGraphics assignments");
-    }
+    profiler.hideStats();
+    view.setDesignResolutionSize(360, 800, ResolutionPolicy.FIXED_HEIGHT);
+    this.ensureRenderers();
 
     this.session = new GameSession({ rules: DEFAULT_RULES });
     this.session.start(Date.now());
@@ -52,11 +56,36 @@ export class SandfallGameComponent extends Component {
     this.pixelBuffer = new SandPixelBuffer({
       width: this.session.boardWidth,
       height: this.session.boardHeight,
-      // Raw texture data starts at the bottom-left while game y=0 is at the top.
-      flipY: true,
+      // SpriteFrame already handles the graphics API's texture orientation.
+      flipY: false,
     });
     this.createTexture();
     this.renderFrame();
+  }
+
+  private ensureRenderers(): void {
+    if (this.sandSprite !== null && this.pieceGraphics !== null) {
+      return;
+    }
+
+    const boardNode = new Node("SandBoard");
+    boardNode.layer = this.node.layer;
+    this.node.addChild(boardNode);
+
+    const transform = boardNode.addComponent(UITransform);
+    transform.setContentSize(300, 720);
+
+    const sprite = boardNode.addComponent(Sprite);
+    sprite.sizeMode = Sprite.SizeMode.CUSTOM;
+    this.sandSprite = sprite;
+
+    // A Cocos node may only own one renderable component. Keep the dynamic
+    // texture and the active-piece overlay on separate, aligned nodes.
+    const pieceNode = new Node("ActivePiece");
+    pieceNode.layer = boardNode.layer;
+    boardNode.addChild(pieceNode);
+    pieceNode.addComponent(UITransform).setContentSize(300, 720);
+    this.pieceGraphics = pieceNode.addComponent(Graphics);
   }
 
   protected onEnable(): void {
@@ -74,6 +103,10 @@ export class SandfallGameComponent extends Component {
   }
 
   protected update(deltaTime: number): void {
+    // Avoid cascading frame errors if a future initialization failure occurs.
+    if (this.session === undefined || this.runner === undefined) {
+      return;
+    }
     if (this.session.phase === "Paused") {
       return;
     }

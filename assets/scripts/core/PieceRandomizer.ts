@@ -37,7 +37,9 @@ export class PieceRandomizer {
     }
 
     this.randomizer = new Randomizer(seed);
-    this.shapeBag = new RandomBag([...this.definitions.keys()], this.randomizer);
+    // Cocos Creator's web-mobile transpiler does not preserve iterable spread
+    // for Map iterators (it emits `[map.keys()]`). Array.from is portable.
+    this.shapeBag = new RandomBag(Array.from(this.definitions.keys()), this.randomizer);
     this.colorBag = new RandomBag(
       Array.from({ length: colorCount }, (_, index) => index + 1),
       this.randomizer,
