@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { SandPixelBuffer } from "../../assets/scripts/rendering/SandPixelBuffer";
+import {
+  SandPixelBuffer,
+  clearFlashIntensity,
+} from "../../assets/scripts/rendering/SandPixelBuffer";
 
 const PALETTE = [
   { r: 1, g: 2, b: 3, a: 255 },
@@ -8,7 +11,12 @@ const PALETTE = [
 
 describe("SandPixelBuffer", () => {
   it("maps every color id to RGBA8888 pixels on first upload", () => {
-    const buffer = new SandPixelBuffer({ width: 2, height: 1, palette: PALETTE });
+    const buffer = new SandPixelBuffer({
+      width: 2,
+      height: 1,
+      palette: PALETTE,
+      shadeStrength: 0,
+    });
     const result = buffer.update(Uint8Array.from([0, 1]));
     expect(result.changedCount).toBe(2);
     expect(buffer.pixels).toEqual(Uint8Array.from([
@@ -32,6 +40,7 @@ describe("SandPixelBuffer", () => {
       height: 2,
       palette: PALETTE,
       flipY: true,
+      shadeStrength: 0,
     });
     buffer.update(Uint8Array.from([1, 0]));
     expect(buffer.pixels).toEqual(Uint8Array.from([
@@ -43,5 +52,77 @@ describe("SandPixelBuffer", () => {
   it("rejects a color id without a palette entry", () => {
     const buffer = new SandPixelBuffer({ width: 1, height: 1, palette: PALETTE });
     expect(() => buffer.update(Uint8Array.from([2]))).toThrow(RangeError);
+  });
+
+  it("adds stable light and dark variants to grains of the same color", () => {
+    const first = new SandPixelBuffer({
+      width: 8,
+      height: 1,
+      palette: PALETTE,
+      shadeStrength: 0.2,
+    });
+    const second = new SandPixelBuffer({
+      width: 8,
+      height: 1,
+      palette: PALETTE,
+      shadeStrength: 0.2,
+    });
+    const cells = Uint8Array.from({ length: 8 }, () => 1);
+    first.update(cells);
+    second.update(cells);
+
+    const redChannels = Array.from({ length: 8 }, (_, index) => first.pixels[index * 4]);
+    expect(new Set(redChannels).size).toBeGreaterThan(1);
+    expect(second.pixels).toEqual(first.pixels);
+  });
+
+  it("keeps empty board pixels flat and validates texture strength", () => {
+    const buffer = new SandPixelBuffer({
+      width: 2,
+      height: 1,
+      palette: PALETTE,
+      shadeStrength: 0.3,
+    });
+    buffer.update(Uint8Array.from([0, 0]));
+    expect(buffer.pixels).toEqual(Uint8Array.from([
+      1, 2, 3, 255,
+      1, 2, 3, 255,
+    ]));
+    expect(() => new SandPixelBuffer({
+      width: 1,
+      height: 1,
+      shadeStrength: 1.01,
+    })).toThrow(RangeError);
+  });
+
+  it("flashes only masked grains toward white and restores their texture", () => {
+    const buffer = new SandPixelBuffer({
+      width: 2,
+      height: 1,
+      palette: PALETTE,
+      shadeStrength: 0,
+    });
+    const cells = Uint8Array.from([1, 1]);
+    const mask = Uint8Array.from([1, 0]);
+    buffer.update(cells);
+    buffer.update(cells, mask, 1);
+    expect(buffer.pixels).toEqual(Uint8Array.from([
+      255, 255, 255, 255,
+      10, 20, 30, 255,
+    ]));
+
+    buffer.update(cells);
+    expect(buffer.pixels).toEqual(Uint8Array.from([
+      10, 20, 30, 255,
+      10, 20, 30, 255,
+    ]));
+  });
+
+  it("produces two white-light peaks across one clear effect", () => {
+    expect(clearFlashIntensity(0)).toBe(0);
+    expect(clearFlashIntensity(0.25)).toBeCloseTo(1);
+    expect(clearFlashIntensity(0.5)).toBeCloseTo(0);
+    expect(clearFlashIntensity(0.75)).toBeCloseTo(1);
+    expect(clearFlashIntensity(1)).toBe(0);
   });
 });

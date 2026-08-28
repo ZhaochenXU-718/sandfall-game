@@ -18,8 +18,14 @@ import {
 } from "cc";
 import { FixedStepRunner } from "../application/FixedStepRunner";
 import { GameSession } from "../application/GameSession";
-import { DEFAULT_RULES } from "../core/RulesConfig";
-import { DEFAULT_SAND_PALETTE, SandPixelBuffer } from "../rendering/SandPixelBuffer";
+import { DEFAULT_RULES, type RulesConfig } from "../core/RulesConfig";
+import { PieceVisualAnimator } from "../rendering/PieceVisualAnimator";
+import {
+  DEFAULT_SAND_PALETTE,
+  DEFAULT_SAND_TEXTURE_STRENGTH,
+  SandPixelBuffer,
+  clearFlashIntensity,
+} from "../rendering/SandPixelBuffer";
 
 const { ccclass, property } = _decorator;
 
@@ -32,10 +38,37 @@ export class SandfallGameComponent extends Component {
   @property(Graphics)
   public pieceGraphics: Graphics | null = null;
 
+  @property({ min: 1, max: 5, step: 1, tooltip: "Number of playable sand colors" })
+  public colorCount = DEFAULT_RULES.colorCount;
+
+  @property({ min: 4, max: 16, step: 1, tooltip: "Sand grains along one block edge" })
+  public grainsPerCell = DEFAULT_RULES.grainsPerCell;
+
+  @property({ min: 0, max: 1000, step: 10, tooltip: "Delay before a grounded piece becomes sand" })
+  public lockDelayMs = DEFAULT_RULES.lockDelayMs;
+
+  @property({ min: 100, max: 1500, step: 50, tooltip: "Milliseconds for one row of normal falling" })
+  public normalFallIntervalMs = DEFAULT_RULES.normalFallIntervalMs;
+
+  @property({ min: 0, max: 1000, step: 10, tooltip: "Duration of the two-flash clear confirmation" })
+  public clearEffectDurationMs = DEFAULT_RULES.clearEffectDurationMs;
+
+  @property({ min: 0, max: 0.35, step: 0.01, tooltip: "Per-grain light and dark color variation" })
+  public sandTextureStrength = DEFAULT_SAND_TEXTURE_STRENGTH;
+
+  @property({ min: 0, max: 300, step: 10, tooltip: "Horizontal movement animation duration" })
+  public moveAnimationMs = 90;
+
+  @property({ min: 0, max: 500, step: 10, tooltip: "Solid block fade after becoming sand" })
+  public sandifyAnimationMs = 180;
+
   private session!: GameSession;
   private runner!: FixedStepRunner;
+  private rules!: Readonly<RulesConfig>;
+  private pieceAnimator!: PieceVisualAnimator;
   private pixelBuffer!: SandPixelBuffer;
   private boardCells!: Uint8Array;
+  private clearMaskCells!: Uint8Array;
   private texture: Texture2D | null = null;
   private spriteFrame: SpriteFrame | null = null;
   private readonly pressedKeys = new Set<KeyCode>();
@@ -45,22 +78,39 @@ export class SandfallGameComponent extends Component {
     view.setDesignResolutionSize(360, 800, ResolutionPolicy.FIXED_HEIGHT);
     this.ensureRenderers();
 
-    this.session = new GameSession({ rules: DEFAULT_RULES });
+    if (this.colorCount >= DEFAULT_SAND_PALETTE.length) {
+      throw new RangeError(`colorCount cannot exceed ${DEFAULT_SAND_PALETTE.length - 1}`);
+    }
+    this.rules = Object.freeze({
+      ...DEFAULT_RULES,
+      colorCount: this.colorCount,
+      grainsPerCell: this.grainsPerCell,
+      lockDelayMs: this.lockDelayMs,
+      normalFallIntervalMs: this.normalFallIntervalMs,
+      clearEffectDurationMs: this.clearEffectDurationMs,
+    });
+    this.session = new GameSession({ rules: this.rules });
     this.session.start(Date.now());
     this.runner = new FixedStepRunner({
-      fixedHz: DEFAULT_RULES.fixedHz,
+      fixedHz: this.rules.fixedHz,
       maxFrameDeltaSeconds: 0.25,
       maxStepsPerFrame: 5,
     }, (fixedDelta) => this.session.tick(fixedDelta));
+    this.pieceAnimator = new PieceVisualAnimator({
+      moveDurationSeconds: this.moveAnimationMs / 1000,
+      sandifyDurationSeconds: this.sandifyAnimationMs / 1000,
+    });
     this.boardCells = new Uint8Array(this.session.boardWidth * this.session.boardHeight);
+    this.clearMaskCells = new Uint8Array(this.boardCells.length);
     this.pixelBuffer = new SandPixelBuffer({
       width: this.session.boardWidth,
       height: this.session.boardHeight,
       // SpriteFrame already handles the graphics API's texture orientation.
       flipY: false,
+      shadeStrength: this.sandTextureStrength,
     });
     this.createTexture();
-    this.renderFrame();
+    this.renderFrame(0);
   }
 
   private ensureRenderers(): void {
@@ -110,8 +160,8 @@ export class SandfallGameComponent extends Component {
     if (this.session.phase === "Paused") {
       return;
     }
-    this.runner.advance(deltaTime);
-    this.renderFrame();
+    const frame = this.runner.advance(deltaTime);
+    this.renderFrame(deltaTime, frame.interpolationAlpha * this.runner.fixedDelta);
   }
 
   protected onDestroy(): void {
@@ -141,23 +191,37 @@ export class SandfallGameComponent extends Component {
     this.spriteFrame = spriteFrame;
   }
 
-  private renderFrame(): void {
+  private renderFrame(deltaTime: number, renderAheadSeconds = 0): void {
     this.session.copyBoardTo(this.boardCells);
-    const update = this.pixelBuffer.update(this.boardCells);
+    const hasClearEffect = this.session.copyClearMaskTo(this.clearMaskCells);
+    const flashIntensity = hasClearEffect
+      ? clearFlashIntensity(this.session.getClearProgress(renderAheadSeconds))
+      : 0;
+    const update = this.pixelBuffer.update(
+      this.boardCells,
+      hasClearEffect ? this.clearMaskCells : undefined,
+      flashIntensity,
+    );
     if (update.changedCount > 0) {
       this.texture?.uploadData(this.pixelBuffer.pixels);
     }
-    this.renderActivePiece();
+    this.renderActivePiece(deltaTime, renderAheadSeconds);
   }
 
-  private renderActivePiece(): void {
+  private renderActivePiece(deltaTime: number, renderAheadSeconds: number): void {
     const graphics = this.pieceGraphics;
     const sprite = this.sandSprite;
     if (graphics === null || sprite === null) {
       return;
     }
     graphics.clear();
-    const piece = this.session.activePiece;
+    const piece = this.pieceAnimator.update(
+      deltaTime,
+      this.session.activePiece,
+      this.session.lastLockedPiece,
+      this.session.lockSequence,
+      this.session.getFallProgress(renderAheadSeconds),
+    );
     if (piece === undefined) {
       return;
     }
@@ -168,11 +232,16 @@ export class SandfallGameComponent extends Component {
       throw new Error("Active piece rendering configuration is invalid");
     }
 
-    const cellWidth = transform.contentSize.width / DEFAULT_RULES.macroWidth;
-    const cellHeight = transform.contentSize.height / DEFAULT_RULES.macroHeight;
+    const cellWidth = transform.contentSize.width / this.rules.macroWidth;
+    const cellHeight = transform.contentSize.height / this.rules.macroHeight;
     const left = -transform.contentSize.width * transform.anchorX;
     const top = transform.contentSize.height * (1 - transform.anchorY);
-    graphics.fillColor = new Color(color.r, color.g, color.b, color.a);
+    graphics.fillColor = new Color(
+      color.r,
+      color.g,
+      color.b,
+      Math.round(color.a * piece.opacity),
+    );
     for (const cell of rotation) {
       const macroX = piece.x + cell.x;
       const macroY = piece.y + cell.y;
@@ -222,11 +291,12 @@ export class SandfallGameComponent extends Component {
       case KeyCode.KEY_R:
         this.session.start(Date.now());
         this.runner.reset();
+        this.pieceAnimator.reset(this.session.lockSequence);
         break;
       default:
         break;
     }
-    this.renderFrame();
+    this.renderFrame(0);
   }
 
   private onKeyUp(event: EventKeyboard): void {

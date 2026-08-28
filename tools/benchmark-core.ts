@@ -1,11 +1,14 @@
 import { Board } from "../assets/scripts/core/Board";
 import { ConnectivityResolver } from "../assets/scripts/core/ConnectivityResolver";
 import { Randomizer } from "../assets/scripts/core/Randomizer";
+import { DEFAULT_RULES, sandBoardSize } from "../assets/scripts/core/RulesConfig";
 import { SandSimulation } from "../assets/scripts/core/SandSimulation";
-import { SandPixelBuffer } from "../assets/scripts/rendering/SandPixelBuffer";
+import {
+  DEFAULT_SAND_TEXTURE_STRENGTH,
+  SandPixelBuffer,
+} from "../assets/scripts/rendering/SandPixelBuffer";
 
-const WIDTH = 60;
-const HEIGHT = 144;
+const { width: WIDTH, height: HEIGHT } = sandBoardSize(DEFAULT_RULES);
 const SIZE = WIDTH * HEIGHT;
 
 function averageMilliseconds(iterations: number, operation: () => void): number {
@@ -19,7 +22,9 @@ function averageMilliseconds(iterations: number, operation: () => void): number 
 const randomizer = new Randomizer(0x5a17f411);
 const cells = new Uint8Array(SIZE);
 for (let index = 0; index < cells.length; index += 1) {
-  cells[index] = randomizer.nextFloat() < 0.9 ? randomizer.nextInt(5) + 1 : 0;
+  cells[index] = randomizer.nextFloat() < 0.9
+    ? randomizer.nextInt(DEFAULT_RULES.colorCount) + 1
+    : 0;
 }
 
 const board = new Board(WIDTH, HEIGHT, cells);
@@ -35,9 +40,16 @@ const connectivityMs = averageMilliseconds(500, () => {
 const firstFrame = cells.slice();
 const secondFrame = cells.slice();
 for (let index = 0; index < secondFrame.length; index += 1) {
-  secondFrame[index] = (secondFrame[index] ?? 0) === 5 ? 1 : (secondFrame[index] ?? 0) + 1;
+  secondFrame[index] = (secondFrame[index] ?? 0) === DEFAULT_RULES.colorCount
+    ? 1
+    : (secondFrame[index] ?? 0) + 1;
 }
-const pixelBuffer = new SandPixelBuffer({ width: WIDTH, height: HEIGHT, flipY: true });
+const pixelBuffer = new SandPixelBuffer({
+  width: WIDTH,
+  height: HEIGHT,
+  flipY: true,
+  shadeStrength: DEFAULT_SAND_TEXTURE_STRENGTH,
+});
 let useFirstFrame = false;
 const rgbaUpdateMs = averageMilliseconds(500, () => {
   pixelBuffer.update(useFirstFrame ? firstFrame : secondFrame);

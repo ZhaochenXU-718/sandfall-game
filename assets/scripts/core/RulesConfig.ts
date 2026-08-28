@@ -9,20 +9,22 @@ export interface RulesConfig {
   readonly normalFallIntervalMs: number;
   readonly softDropIntervalMs: number;
   readonly lockDelayMs: number;
+  readonly clearEffectDurationMs: number;
   readonly maxLockResets: number;
 }
 
 export const DEFAULT_RULES: Readonly<RulesConfig> = Object.freeze({
-  version: "0.3.0",
+  version: "0.6.0",
   macroWidth: 10,
   macroHeight: 24,
-  grainsPerCell: 6,
-  colorCount: 5,
+  grainsPerCell: 10,
+  colorCount: 4,
   fixedHz: 60,
   stableTicks: 4,
-  normalFallIntervalMs: 800,
+  normalFallIntervalMs: 600,
   softDropIntervalMs: 50,
-  lockDelayMs: 350,
+  lockDelayMs: 120,
+  clearEffectDurationMs: 420,
   maxLockResets: 10,
 });
 

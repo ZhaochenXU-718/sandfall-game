@@ -34,10 +34,13 @@ export class GameSession {
   private currentPiece: PieceController | undefined;
   private upcomingPiece: NextPiece | undefined;
   private pendingClear: ConnectivityResult | undefined;
+  private mostRecentLockedPiece: ActivePieceState | undefined;
+  private completedLockCount = 0;
   private currentSeed = 0;
   private currentTick = 0;
   private currentChain = 0;
   private fallAccumulatorMs = 0;
+  private clearElapsedMs = 0;
   private softDropActive = false;
 
   public constructor(options: GameSessionOptions) {
@@ -81,6 +84,50 @@ export class GameSession {
     return this.upcomingPiece;
   }
 
+  /** Last piece placement committed to the sand board, for visual transitions only. */
+  public get lastLockedPiece(): ActivePieceState | undefined {
+    return this.mostRecentLockedPiece;
+  }
+
+  /** Monotonic sequence used by renderers to detect a new lock event. */
+  public get lockSequence(): number {
+    return this.completedLockCount;
+  }
+
+  /**
+   * Fractional progress toward the next logical row. Renderers may provide the
+   * fixed-step runner's unsimulated remainder so motion stays smooth even when
+   * the display refresh rate is higher than the simulation frequency.
+   */
+  public getFallProgress(renderAheadSeconds = 0): number {
+    if (!Number.isFinite(renderAheadSeconds) || renderAheadSeconds < 0) {
+      throw new RangeError("Render-ahead time must be a non-negative finite number");
+    }
+    const piece = this.currentPiece;
+    if (piece === undefined || this.phase !== "Falling" || piece.isGrounded) {
+      return 0;
+    }
+    const interval = this.currentFallIntervalMs();
+    return Math.min(1, (this.fallAccumulatorMs + renderAheadSeconds * 1000) / interval);
+  }
+
+  /** Progress of the pending clear confirmation effect, from zero to one. */
+  public getClearProgress(renderAheadSeconds = 0): number {
+    if (!Number.isFinite(renderAheadSeconds) || renderAheadSeconds < 0) {
+      throw new RangeError("Render-ahead time must be a non-negative finite number");
+    }
+    if (this.phase !== "Clearing" || this.pendingClear === undefined) {
+      return 0;
+    }
+    if (this.rules.clearEffectDurationMs === 0) {
+      return 1;
+    }
+    return Math.min(
+      1,
+      (this.clearElapsedMs + renderAheadSeconds * 1000) / this.rules.clearEffectDurationMs,
+    );
+  }
+
   public get boardWidth(): number {
     return this.board.width;
   }
@@ -97,9 +144,12 @@ export class GameSession {
     this.currentTick = 0;
     this.currentChain = 0;
     this.fallAccumulatorMs = 0;
+    this.clearElapsedMs = 0;
     this.softDropActive = false;
     this.currentPiece = undefined;
     this.pendingClear = undefined;
+    this.mostRecentLockedPiece = undefined;
+    this.completedLockCount = 0;
 
     const modules = this.createBoardModules(this.currentSeed);
     this.board = modules.board;
@@ -150,8 +200,10 @@ export class GameSession {
       return;
     }
     if (this.softDropActive !== active) {
+      const previousInterval = this.currentFallIntervalMs();
+      const progress = this.fallAccumulatorMs / previousInterval;
       this.softDropActive = active;
-      this.fallAccumulatorMs = 0;
+      this.fallAccumulatorMs = progress * this.currentFallIntervalMs();
     }
   }
 
@@ -189,7 +241,7 @@ export class GameSession {
         this.tickResolving();
         break;
       case "Clearing":
-        this.tickClearing();
+        this.tickClearing(deltaMs);
         break;
       default:
         break;
@@ -202,6 +254,20 @@ export class GameSession {
 
   public copyBoardTo(target: Uint8Array): void {
     this.board.copyTo(target);
+  }
+
+  /** Copies the component selected for clearing; returns false outside the clear effect. */
+  public copyClearMaskTo(target: Uint8Array): boolean {
+    if (target.length !== this.board.width * this.board.height) {
+      throw new RangeError(`Expected a target of length ${this.board.width * this.board.height}`);
+    }
+    const result = this.pendingClear;
+    if (this.phase !== "Clearing" || result === undefined) {
+      target.fill(0);
+      return false;
+    }
+    target.set(result.removalMask);
+    return true;
   }
 
   private spawnNextPiece(): void {
@@ -258,9 +324,7 @@ export class GameSession {
       return;
     }
 
-    const interval = this.softDropActive
-      ? this.rules.softDropIntervalMs
-      : this.rules.normalFallIntervalMs;
+    const interval = this.currentFallIntervalMs();
     this.fallAccumulatorMs += deltaMs;
     while (this.fallAccumulatorMs + 1e-9 >= interval) {
       this.fallAccumulatorMs -= interval;
@@ -289,11 +353,14 @@ export class GameSession {
 
   private lockActivePiece(): void {
     const piece = this.requireActivePiece();
-    const written = this.rasterizer.rasterize(piece.getState());
+    const lockedState = piece.getState();
+    const written = this.rasterizer.rasterize(lockedState);
     if (written === 0) {
       throw new Error("Active piece failed atomic rasterization");
     }
     this.currentPiece = undefined;
+    this.mostRecentLockedPiece = lockedState;
+    this.completedLockCount += 1;
     this.softDropActive = false;
     this.fallAccumulatorMs = 0;
     this.stableDetector.reset();
@@ -310,6 +377,7 @@ export class GameSession {
     const connectivity = this.connectivity.resolve();
     if (connectivity.markedCellCount > 0) {
       this.pendingClear = connectivity;
+      this.clearElapsedMs = 0;
       this.stateMachine.transition("Clearing");
       return;
     }
@@ -318,10 +386,17 @@ export class GameSession {
     this.stateMachine.transition("Spawning");
   }
 
-  private tickClearing(): void {
+  private tickClearing(deltaMs: number): void {
     const result = this.pendingClear;
     if (result === undefined) {
       throw new Error("Clearing state is missing its marked component result");
+    }
+    this.clearElapsedMs = Math.min(
+      this.rules.clearEffectDurationMs,
+      this.clearElapsedMs + deltaMs,
+    );
+    if (this.clearElapsedMs + 1e-9 < this.rules.clearEffectDurationMs) {
+      return;
     }
     const cleared = this.board.clearMarked(result.removalMask);
     if (cleared !== result.markedCellCount || cleared === 0) {
@@ -329,6 +404,7 @@ export class GameSession {
     }
     this.currentChain += 1;
     this.pendingClear = undefined;
+    this.clearElapsedMs = 0;
     this.stableDetector.reset();
     this.stateMachine.transition("Resolving");
   }
@@ -372,6 +448,12 @@ export class GameSession {
 
   private acceptsPieceCommands(): boolean {
     return this.phase === "Falling" || this.phase === "LockDelay";
+  }
+
+  private currentFallIntervalMs(): number {
+    return this.softDropActive
+      ? this.rules.softDropIntervalMs
+      : this.rules.normalFallIntervalMs;
   }
 
   private requireActivePiece(): PieceController {
@@ -428,6 +510,9 @@ export class GameSession {
     }
     if (!Number.isFinite(rules.lockDelayMs) || rules.lockDelayMs < 0) {
       throw new RangeError("lockDelayMs must be non-negative");
+    }
+    if (!Number.isFinite(rules.clearEffectDurationMs) || rules.clearEffectDurationMs < 0) {
+      throw new RangeError("clearEffectDurationMs must be non-negative");
     }
     if (!Number.isInteger(rules.maxLockResets) || rules.maxLockResets < 0) {
       throw new RangeError("maxLockResets must be a non-negative integer");

@@ -18,7 +18,11 @@ export interface SandPixelBufferOptions {
   readonly height: number;
   readonly palette?: readonly RgbaColor[];
   readonly flipY?: boolean;
+  /** Maximum per-grain lightness variation, from 0 (flat) to 1. */
+  readonly shadeStrength?: number;
 }
+
+export const DEFAULT_SAND_TEXTURE_STRENGTH = 0.18;
 
 export const DEFAULT_SAND_PALETTE: readonly RgbaColor[] = Object.freeze([
   Object.freeze({ r: 17, g: 24, b: 39, a: 255 }),
@@ -37,7 +41,10 @@ export class SandPixelBuffer {
 
   private readonly palette: readonly RgbaColor[];
   private readonly previousCells: Uint8Array;
+  private readonly previousFlashMask: Uint8Array;
   private readonly flipY: boolean;
+  private readonly shadeStrength: number;
+  private previousFlashIntensity = 0;
   private initialized = false;
   private readonly result: PixelBufferUpdateResult = {
     changedCount: 0,
@@ -65,18 +72,34 @@ export class SandPixelBuffer {
         }
       }
     }
+    const shadeStrength = options.shadeStrength ?? DEFAULT_SAND_TEXTURE_STRENGTH;
+    if (!Number.isFinite(shadeStrength) || shadeStrength < 0 || shadeStrength > 1) {
+      throw new RangeError("Sand shade strength must be between zero and one");
+    }
 
     this.width = options.width;
     this.height = options.height;
     this.palette = palette;
     this.flipY = options.flipY ?? false;
+    this.shadeStrength = shadeStrength;
     this.previousCells = new Uint8Array(this.width * this.height);
+    this.previousFlashMask = new Uint8Array(this.width * this.height);
     this.pixels = new Uint8Array(this.width * this.height * 4);
   }
 
-  public update(cells: Uint8Array): PixelBufferUpdateResult {
+  public update(
+    cells: Uint8Array,
+    flashMask?: Uint8Array,
+    flashIntensity = 0,
+  ): PixelBufferUpdateResult {
     if (cells.length !== this.previousCells.length) {
       throw new RangeError(`Expected ${this.previousCells.length} cells, got ${cells.length}`);
+    }
+    if (flashMask !== undefined && flashMask.length !== cells.length) {
+      throw new RangeError(`Expected a flash mask of length ${cells.length}`);
+    }
+    if (!Number.isFinite(flashIntensity) || flashIntensity < 0 || flashIntensity > 1) {
+      throw new RangeError("Flash intensity must be between zero and one");
     }
     this.resetResult();
 
@@ -85,7 +108,13 @@ export class SandPixelBuffer {
       if (colorId === undefined) {
         throw new Error("Cell buffer invariant violated");
       }
-      if (this.initialized && colorId === this.previousCells[sourceIndex]) {
+      const flashed = flashMask?.[sourceIndex] !== undefined
+        && flashMask[sourceIndex] !== 0;
+      const previouslyFlashed = this.previousFlashMask[sourceIndex] !== 0;
+      const cellChanged = !this.initialized || colorId !== this.previousCells[sourceIndex];
+      const flashChanged = flashed !== previouslyFlashed
+        || ((flashed || previouslyFlashed) && flashIntensity !== this.previousFlashIntensity);
+      if (!cellChanged && !flashChanged) {
         continue;
       }
       const color = this.palette[colorId];
@@ -94,18 +123,31 @@ export class SandPixelBuffer {
       }
 
       this.previousCells[sourceIndex] = colorId;
+      this.previousFlashMask[sourceIndex] = flashed ? 1 : 0;
       const sourceX = sourceIndex % this.width;
       const sourceY = Math.floor(sourceIndex / this.width);
       const targetY = this.flipY ? this.height - 1 - sourceY : sourceY;
       const pixelOffset = (targetY * this.width + sourceX) * 4;
-      this.pixels[pixelOffset] = color.r;
-      this.pixels[pixelOffset + 1] = color.g;
-      this.pixels[pixelOffset + 2] = color.b;
+      const shade = colorId === 0
+        ? 0
+        : grainShade(sourceX, sourceY, colorId, this.shadeStrength);
+      this.pixels[pixelOffset] = flashChannel(shadeChannel(color.r, shade), flashed, flashIntensity);
+      this.pixels[pixelOffset + 1] = flashChannel(
+        shadeChannel(color.g, shade),
+        flashed,
+        flashIntensity,
+      );
+      this.pixels[pixelOffset + 2] = flashChannel(
+        shadeChannel(color.b, shade),
+        flashed,
+        flashIntensity,
+      );
       this.pixels[pixelOffset + 3] = color.a;
       this.includeDirty(sourceX, targetY);
     }
 
     this.initialized = true;
+    this.previousFlashIntensity = flashIntensity;
     return this.result;
   }
 
@@ -131,4 +173,44 @@ export class SandPixelBuffer {
     this.result.dirtyMaxX = -1;
     this.result.dirtyMaxY = -1;
   }
+}
+
+/** Stable coordinate noise keeps settled sand textured without allocating grain objects. */
+function grainShade(x: number, y: number, colorId: number, strength: number): number {
+  let hash = Math.imul(x + colorId * 31, 0x045d9f3b)
+    ^ Math.imul(y + colorId * 17, 0x119de1f3);
+  hash ^= hash >>> 16;
+  switch (hash & 3) {
+    case 0:
+      return -strength;
+    case 1:
+      return -strength * 0.45;
+    case 2:
+      return 0;
+    default:
+      return strength * 0.7;
+  }
+}
+
+function shadeChannel(channel: number, shade: number): number {
+  const value = shade < 0
+    ? channel * (1 + shade)
+    : channel + (255 - channel) * shade;
+  return Math.max(0, Math.min(255, Math.round(value)));
+}
+
+function flashChannel(channel: number, flashed: boolean, intensity: number): number {
+  return flashed ? Math.round(channel + (255 - channel) * intensity) : channel;
+}
+
+/** Two smooth white-light pulses over normalized clear-effect progress. */
+export function clearFlashIntensity(progress: number): number {
+  if (!Number.isFinite(progress) || progress < 0 || progress > 1) {
+    throw new RangeError("Clear flash progress must be between zero and one");
+  }
+  if (progress === 1) {
+    return 0;
+  }
+  const wave = Math.sin(progress * Math.PI * 2);
+  return wave * wave;
 }

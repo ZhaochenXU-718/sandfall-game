@@ -17,6 +17,7 @@ function rules(overrides: Partial<RulesConfig> = {}): RulesConfig {
     normalFallIntervalMs: 100,
     softDropIntervalMs: 20,
     lockDelayMs: 100,
+    clearEffectDurationMs: 0,
     maxLockResets: 2,
     ...overrides,
   };
@@ -41,6 +42,8 @@ describe("GameSession", () => {
     session.tick(STEP);
     expect(session.phase).toBe("Resolving");
     expect(session.activePiece).toBeUndefined();
+    expect(session.lockSequence).toBe(1);
+    expect(session.lastLockedPiece?.y).toBe(4);
     expect([...session.getBoardSnapshot()].filter(Boolean)).toHaveLength(4);
   });
 
@@ -63,6 +66,38 @@ describe("GameSession", () => {
     expect(session.chainLevel).toBe(0);
   });
 
+  it("keeps a spanning component visible until the clear effect completes", () => {
+    const session = new GameSession({
+      rules: rules({ clearEffectDurationMs: 400 }),
+      pieces: [I_PIECE],
+    });
+    const mask = new Uint8Array(24);
+    session.start(20);
+    session.tick(STEP);
+    session.hardDrop();
+    session.tick(STEP);
+
+    expect(session.phase).toBe("Clearing");
+    expect(session.getClearProgress()).toBe(0);
+    expect(session.getClearProgress(0.05)).toBeCloseTo(0.125);
+    expect(session.copyClearMaskTo(mask)).toBe(true);
+    expect([...mask].filter(Boolean)).toHaveLength(4);
+    expect([...session.getBoardSnapshot()].filter(Boolean)).toHaveLength(4);
+
+    for (let tick = 0; tick < 3; tick += 1) {
+      session.tick(STEP);
+    }
+    expect(session.phase).toBe("Clearing");
+    expect(session.getClearProgress()).toBeCloseTo(0.75);
+    expect([...session.getBoardSnapshot()].filter(Boolean)).toHaveLength(4);
+
+    session.tick(STEP);
+    expect(session.phase).toBe("Resolving");
+    expect(session.copyClearMaskTo(mask)).toBe(false);
+    expect(mask).toEqual(new Uint8Array(24));
+    expect(session.getBoardSnapshot()).toEqual(new Uint8Array(24));
+  });
+
   it("soft drop uses its shorter configured interval", () => {
     const session = new GameSession({
       rules: rules({ normalFallIntervalMs: 1000, softDropIntervalMs: 100 }),
@@ -73,6 +108,25 @@ describe("GameSession", () => {
     session.setSoftDrop(true);
     session.tick(STEP);
     expect(session.activePiece?.y).toBe(1);
+  });
+
+  it("exposes continuous fall progress and preserves it when fall speed changes", () => {
+    const session = new GameSession({
+      rules: rules({ normalFallIntervalMs: 400, softDropIntervalMs: 100 }),
+      pieces: [O_PIECE],
+    });
+    session.start(30);
+    session.tick(STEP);
+
+    expect(session.getFallProgress()).toBe(0);
+    expect(session.getFallProgress(0.05)).toBeCloseTo(0.125);
+    session.tick(STEP);
+    expect(session.getFallProgress()).toBeCloseTo(0.25);
+
+    session.setSoftDrop(true);
+    expect(session.getFallProgress()).toBeCloseTo(0.25);
+    session.setSoftDrop(false);
+    expect(session.getFallProgress()).toBeCloseTo(0.25);
   });
 
   it("pauses without advancing simulation time or piece position", () => {
