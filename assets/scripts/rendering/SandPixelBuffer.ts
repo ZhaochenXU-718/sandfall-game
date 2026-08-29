@@ -43,7 +43,12 @@ export class SandPixelBuffer {
   private readonly clearGlowPalette: readonly RgbaColor[];
   private readonly previousCells: Uint8Array;
   private readonly previousGrainVariants: Uint8Array;
-  private readonly previousFlashMask: Uint8Array;
+  private readonly glowColorIds: Uint8Array;
+  private readonly glowStrengths: Uint8Array;
+  private readonly cachedFlashMask: Uint8Array;
+  private readonly cachedFlashColors: Uint8Array;
+  private readonly previousGlowColorIds: Uint8Array;
+  private readonly previousGlowStrengths: Uint8Array;
   private readonly flipY: boolean;
   private readonly shadeStrength: number;
   private previousFlashIntensity = 0;
@@ -82,17 +87,17 @@ export class SandPixelBuffer {
     this.width = options.width;
     this.height = options.height;
     this.palette = palette;
-    this.clearGlowPalette = palette.map((color) => ({
-      r: clearGlowTargetChannel(color.r),
-      g: clearGlowTargetChannel(color.g),
-      b: clearGlowTargetChannel(color.b),
-      a: color.a,
-    }));
+    this.clearGlowPalette = palette.map(clearGlowColor);
     this.flipY = options.flipY ?? false;
     this.shadeStrength = shadeStrength;
     this.previousCells = new Uint8Array(this.width * this.height);
     this.previousGrainVariants = new Uint8Array(this.width * this.height);
-    this.previousFlashMask = new Uint8Array(this.width * this.height);
+    this.glowColorIds = new Uint8Array(this.width * this.height);
+    this.glowStrengths = new Uint8Array(this.width * this.height);
+    this.cachedFlashMask = new Uint8Array(this.width * this.height);
+    this.cachedFlashColors = new Uint8Array(this.width * this.height);
+    this.previousGlowColorIds = new Uint8Array(this.width * this.height);
+    this.previousGlowStrengths = new Uint8Array(this.width * this.height);
     this.pixels = new Uint8Array(this.width * this.height * 4);
   }
 
@@ -111,19 +116,23 @@ export class SandPixelBuffer {
     if (grainVariants !== undefined && grainVariants.length !== cells.length) {
       throw new RangeError(`Expected grain variants of length ${cells.length}`);
     }
-    if (!Number.isFinite(flashIntensity) || flashIntensity < 0 || flashIntensity > 1) {
-      throw new RangeError("Flash intensity must be between zero and one");
+    if (!Number.isFinite(flashIntensity) || flashIntensity < 0 || flashIntensity > 1.6) {
+      throw new RangeError("Flash intensity must be between zero and 1.6");
     }
     this.resetResult();
+    this.buildGlowMap(cells, flashMask);
 
     for (let sourceIndex = 0; sourceIndex < cells.length; sourceIndex += 1) {
       const colorId = cells[sourceIndex];
       if (colorId === undefined) {
         throw new Error("Cell buffer invariant violated");
       }
-      const flashed = flashMask?.[sourceIndex] !== undefined
-        && flashMask[sourceIndex] !== 0;
-      const previouslyFlashed = this.previousFlashMask[sourceIndex] !== 0;
+      const glowColorId = this.glowColorIds[sourceIndex] ?? 0;
+      const glowStrength = this.glowStrengths[sourceIndex] ?? 0;
+      const previousGlowColorId = this.previousGlowColorIds[sourceIndex] ?? 0;
+      const previousGlowStrength = this.previousGlowStrengths[sourceIndex] ?? 0;
+      const flashed = glowStrength > 0;
+      const previouslyFlashed = previousGlowStrength > 0;
       const sourceX = sourceIndex % this.width;
       const sourceY = Math.floor(sourceIndex / this.width);
       const grainVariant = colorId === 0
@@ -132,20 +141,22 @@ export class SandPixelBuffer {
       const cellChanged = !this.initialized
         || colorId !== this.previousCells[sourceIndex]
         || grainVariant !== this.previousGrainVariants[sourceIndex];
-      const flashChanged = flashed !== previouslyFlashed
+      const flashChanged = glowColorId !== previousGlowColorId
+        || glowStrength !== previousGlowStrength
         || ((flashed || previouslyFlashed) && flashIntensity !== this.previousFlashIntensity);
       if (!cellChanged && !flashChanged) {
         continue;
       }
       const color = this.palette[colorId];
-      const glowColor = this.clearGlowPalette[colorId];
+      const glowColor = this.clearGlowPalette[glowColorId];
       if (color === undefined || glowColor === undefined) {
         throw new RangeError(`Color id ${colorId} has no palette entry`);
       }
 
       this.previousCells[sourceIndex] = colorId;
       this.previousGrainVariants[sourceIndex] = grainVariant;
-      this.previousFlashMask[sourceIndex] = flashed ? 1 : 0;
+      this.previousGlowColorIds[sourceIndex] = glowColorId;
+      this.previousGlowStrengths[sourceIndex] = glowStrength;
       const targetY = this.flipY ? this.height - 1 - sourceY : sourceY;
       const pixelOffset = (targetY * this.width + sourceX) * 4;
       const shade = colorId === 0
@@ -154,20 +165,17 @@ export class SandPixelBuffer {
       this.pixels[pixelOffset] = flashChannel(
         shadeChannel(color.r, shade),
         glowColor.r,
-        flashed,
-        flashIntensity,
+        flashIntensity * glowStrength / 255,
       );
       this.pixels[pixelOffset + 1] = flashChannel(
         shadeChannel(color.g, shade),
         glowColor.g,
-        flashed,
-        flashIntensity,
+        flashIntensity * glowStrength / 255,
       );
       this.pixels[pixelOffset + 2] = flashChannel(
         shadeChannel(color.b, shade),
         glowColor.b,
-        flashed,
-        flashIntensity,
+        flashIntensity * glowStrength / 255,
       );
       this.pixels[pixelOffset + 3] = color.a;
       this.includeDirty(sourceX, targetY);
@@ -176,6 +184,69 @@ export class SandPixelBuffer {
     this.initialized = true;
     this.previousFlashIntensity = flashIntensity;
     return this.result;
+  }
+
+  /** Builds a three-pixel additive halo around every grain selected for clearing. */
+  private buildGlowMap(cells: Uint8Array, flashMask?: Uint8Array): void {
+    let sourceChanged = false;
+    for (let index = 0; index < cells.length; index += 1) {
+      const masked = flashMask?.[index] !== undefined && flashMask[index] !== 0;
+      const maskValue = masked ? 1 : 0;
+      const colorValue = masked ? cells[index] ?? 0 : 0;
+      if (
+        this.cachedFlashMask[index] !== maskValue
+        || this.cachedFlashColors[index] !== colorValue
+      ) {
+        this.cachedFlashMask[index] = maskValue;
+        this.cachedFlashColors[index] = colorValue;
+        sourceChanged = true;
+      }
+    }
+    if (!sourceChanged) {
+      return;
+    }
+
+    this.glowColorIds.fill(0);
+    this.glowStrengths.fill(0);
+    if (flashMask === undefined) {
+      return;
+    }
+
+    const radius = 3;
+    for (let sourceIndex = 0; sourceIndex < cells.length; sourceIndex += 1) {
+      if (this.cachedFlashMask[sourceIndex] === 0) {
+        continue;
+      }
+      const colorId = this.cachedFlashColors[sourceIndex] ?? 0;
+      if (colorId === 0) {
+        continue;
+      }
+      const sourceX = sourceIndex % this.width;
+      const sourceY = Math.floor(sourceIndex / this.width);
+      for (let offsetY = -radius; offsetY <= radius; offsetY += 1) {
+        const targetY = sourceY + offsetY;
+        if (targetY < 0 || targetY >= this.height) {
+          continue;
+        }
+        for (let offsetX = -radius; offsetX <= radius; offsetX += 1) {
+          const targetX = sourceX + offsetX;
+          if (targetX < 0 || targetX >= this.width) {
+            continue;
+          }
+          const distanceSquared = offsetX * offsetX + offsetY * offsetY;
+          const strength = glowStrengthForDistance(distanceSquared);
+          if (strength === 0) {
+            continue;
+          }
+          const targetIndex = targetY * this.width + targetX;
+          const existingStrength = this.glowStrengths[targetIndex] ?? 0;
+          if (strength > existingStrength) {
+            this.glowStrengths[targetIndex] = strength;
+            this.glowColorIds[targetIndex] = colorId;
+          }
+        }
+      }
+    }
   }
 
   private includeDirty(x: number, y: number): void {
@@ -225,28 +296,65 @@ function shadeChannel(channel: number, shade: number): number {
 function flashChannel(
   channel: number,
   glowTarget: number,
-  flashed: boolean,
   intensity: number,
 ): number {
-  return flashed ? Math.round(channel + (glowTarget - channel) * intensity) : channel;
-}
-
-/** Screen-blends a palette channel with itself to brighten it without losing hue. */
-export function clearGlowTargetChannel(channel: number): number {
-  if (!Number.isInteger(channel) || channel < 0 || channel > 255) {
-    throw new RangeError("Clear glow channel must be an integer between zero and 255");
+  if (intensity <= 0) {
+    return channel;
   }
-  return Math.round(255 - ((255 - channel) * (255 - channel)) / 255);
+  const screened = 255 - ((255 - channel) * (255 - glowTarget)) / 255;
+  return Math.max(0, Math.min(255, Math.round(channel + (screened - channel) * intensity)));
 }
 
-/** Two smooth colored-light pulses over normalized clear-effect progress. */
-export function clearFlashIntensity(progress: number): number {
+/** Creates a bright, high-saturation emissive color without washing it toward white. */
+export function clearGlowColor(color: RgbaColor): RgbaColor {
+  const channels = [color.r, color.g, color.b];
+  for (const channel of [...channels, color.a]) {
+    if (!Number.isInteger(channel) || channel < 0 || channel > 255) {
+      throw new RangeError("Clear glow channels must be integers between zero and 255");
+    }
+  }
+  const minimum = Math.min(...channels);
+  const maximum = Math.max(...channels);
+  if (maximum === minimum) {
+    return { ...color };
+  }
+  const saturatedFloor = 18;
+  const saturated = channels.map((channel) => (
+    saturatedFloor
+      + ((channel - minimum) / (maximum - minimum)) * (255 - saturatedFloor)
+  ));
+  return {
+    r: Math.round(saturated[0] ?? color.r),
+    g: Math.round(saturated[1] ?? color.g),
+    b: Math.round(saturated[2] ?? color.b),
+    a: color.a,
+  };
+}
+
+function glowStrengthForDistance(distanceSquared: number): number {
+  if (distanceSquared === 0) return 255;
+  if (distanceSquared <= 1) return 150;
+  if (distanceSquared <= 2) return 112;
+  if (distanceSquared <= 4) return 78;
+  if (distanceSquared <= 5) return 54;
+  if (distanceSquared <= 8) return 34;
+  if (distanceSquared <= 9) return 22;
+  return 0;
+}
+
+/** Two sustained colored-light pulses, amplified by successive chain clears. */
+export function clearFlashIntensity(progress: number, chainLevel = 1): number {
   if (!Number.isFinite(progress) || progress < 0 || progress > 1) {
     throw new RangeError("Clear flash progress must be between zero and one");
+  }
+  if (!Number.isInteger(chainLevel) || chainLevel <= 0) {
+    throw new RangeError("Clear flash chain level must be a positive integer");
   }
   if (progress === 1) {
     return 0;
   }
   const wave = Math.sin(progress * Math.PI * 2);
-  return wave * wave;
+  const sustainedPulse = Math.pow(wave * wave, 0.38);
+  const chainBoost = Math.min(1.6, 1 + (chainLevel - 1) * 0.18);
+  return sustainedPulse * chainBoost;
 }

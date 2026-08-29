@@ -26,8 +26,18 @@ export type {
 export { RandomBag } from "./RandomBag";
 export type { RandomBagState } from "./RandomBag";
 export { Randomizer } from "./Randomizer";
-export { DEFAULT_RULES, sandBoardSize } from "./RulesConfig";
-export type { RulesConfig } from "./RulesConfig";
+export {
+  CLEARS_PER_LEVEL,
+  DEFAULT_LEVEL_FALL_INTERVALS_MS,
+  DEFAULT_RULES,
+  PROGRESSIVE_COLOR_UNLOCK_LEVEL,
+  PROGRESSIVE_UNLOCKED_COLOR_COUNT,
+  colorCountForLevel,
+  levelForClearCount,
+  normalFallIntervalForLevel,
+  sandBoardSize,
+} from "./RulesConfig";
+export type { GameMode, RulesConfig } from "./RulesConfig";
 export { SandSimulation } from "./SandSimulation";
 export { StableDetector } from "./StableDetector";
 export type { ColorId, ConnectivityResult, SandStepResult } from "./types";

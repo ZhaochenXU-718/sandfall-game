@@ -34,7 +34,11 @@ import {
 } from "../application/GestureRecognizer";
 import { HighScoreStore, type StringStorage } from "../application/HighScoreStore";
 import { InputAutoRepeat } from "../application/InputAutoRepeat";
-import { DEFAULT_RULES, type RulesConfig } from "../core/RulesConfig";
+import {
+  DEFAULT_RULES,
+  type GameMode,
+  type RulesConfig,
+} from "../core/RulesConfig";
 import { CocosFeedbackController } from "./CocosFeedbackController";
 import { layoutPiecePreview } from "../rendering/PiecePreviewLayout";
 import { PieceVisualAnimator } from "../rendering/PieceVisualAnimator";
@@ -51,6 +55,9 @@ import {
 } from "../rendering/SandPixelBuffer";
 
 const { ccclass, property } = _decorator;
+const CLASSIC_MIN_COLOR_COUNT = 2;
+const CLASSIC_MAX_COLOR_COUNT = 5;
+const CLASSIC_FALL_INTERVALS_MS = [900, 750, 600, 500, 400, 300] as const;
 
 /** Minimal Cocos Creator 3.8.8 prototype host for the deterministic game core. */
 @ccclass("SandfallGameComponent")
@@ -134,6 +141,7 @@ export class SandfallGameComponent extends Component {
   private modalSummaryLabel: Label | null = null;
   private modalActionNode: Node | null = null;
   private modalActionLabel: Label | null = null;
+  private modalHomeNode: Node | null = null;
   private modalHintLabel: Label | null = null;
   private modalBackdrop: Graphics | null = null;
   private modalCardNode: Node | null = null;
@@ -142,16 +150,32 @@ export class SandfallGameComponent extends Component {
   private homeBackground: Graphics | null = null;
   private homeHeroNode: Node | null = null;
   private homeStartButtonNode: Node | null = null;
+  private homeStartButtonLabel: Label | null = null;
   private homeBestLabel: Label | null = null;
+  private homeProgressiveModeGraphics: Graphics | null = null;
+  private homeClassicModeGraphics: Graphics | null = null;
+  private homeProgressiveDetailsNode: Node | null = null;
+  private homeClassicControlsNode: Node | null = null;
+  private homeClassicColorLabel: Label | null = null;
+  private homeClassicSpeedLabel: Label | null = null;
+  private selectedGameMode: GameMode = "progressive";
+  private classicColorCount = DEFAULT_RULES.colorCount;
+  private classicSpeedIndex = 2;
   private homeAnimationSeconds = 0;
   private homeHeroImpulse = 0;
   private readonly homeHeroBaseY = 42;
   private feedback!: CocosFeedbackController;
   private highScoreStore!: HighScoreStore;
+  private highScoreStorage: StringStorage | undefined;
   private gameOverRecorded = false;
   private lastRenderedScore = 0;
+  private lastRenderedLevel = 1;
+  private lastRenderedColorCount = DEFAULT_RULES.colorCount;
+  private lastRenderedChainLevel = 0;
   private scoreFeedbackAmount = 0;
   private scoreFeedbackElapsedSeconds = Number.POSITIVE_INFINITY;
+  private scoreFeedbackShowsLevelUp = false;
+  private scoreFeedbackShowsChain = false;
   private scorePulseElapsedSeconds = Number.POSITIVE_INFINITY;
   private scoreFeedbackBaseY = 245;
   private scoreFeedbackBaseX = 0;
@@ -165,25 +189,23 @@ export class SandfallGameComponent extends Component {
   protected onLoad(): void {
     profiler.hideStats();
     view.setDesignResolutionSize(360, 800, ResolutionPolicy.FIXED_HEIGHT);
+    this.classicColorCount = Math.min(
+      CLASSIC_MAX_COLOR_COUNT,
+      Math.max(CLASSIC_MIN_COLOR_COUNT, Math.round(this.colorCount)),
+    );
+    this.classicSpeedIndex = this.nearestClassicSpeedIndex(this.normalFallIntervalMs);
     this.ensureRenderers();
 
     if (this.colorCount >= DEFAULT_SAND_PALETTE.length) {
       throw new RangeError(`colorCount cannot exceed ${DEFAULT_SAND_PALETTE.length - 1}`);
     }
-    this.rules = Object.freeze({
-      ...DEFAULT_RULES,
-      colorCount: this.colorCount,
-      grainsPerCell: this.grainsPerCell,
-      sandSubsteps: this.sandSubsteps,
-      lockDelayMs: this.lockDelayMs,
-      normalFallIntervalMs: this.normalFallIntervalMs,
-      clearEffectDurationMs: this.clearEffectDurationMs,
-    });
+    this.rules = this.createRulesForSelectedMode();
     this.applyResponsiveLayout();
     const globalStorage = (globalThis as { localStorage?: StringStorage }).localStorage;
+    this.highScoreStorage = globalStorage;
     this.feedback = new CocosFeedbackController(this.node, globalStorage);
-    this.highScoreStore = new HighScoreStore(globalStorage);
-    this.session = new GameSession({ rules: this.rules });
+    this.highScoreStore = this.createHighScoreStoreForSelectedMode();
+    this.session = new GameSession({ rules: this.rules, mode: this.selectedGameMode });
     this.resetFeedbackState();
     this.runner = new FixedStepRunner({
       fixedHz: this.rules.fixedHz,
@@ -331,7 +353,7 @@ export class SandfallGameComponent extends Component {
       "ScoreFeedback",
       0,
       245,
-      160,
+      260,
       40,
       22,
     );
@@ -376,10 +398,15 @@ export class SandfallGameComponent extends Component {
     this.modalSummaryLabel.lineHeight = 24;
     this.modalSummaryLabel.color = new Color(194, 207, 230, 255);
 
-    const action = this.createButton(cardNode, "ModalAction", 0, -67, 188, 48, "PLAY AGAIN");
+    const action = this.createButton(cardNode, "ModalAction", 0, -67, 112, 48, "PLAY AGAIN");
     this.modalActionNode = action.node;
     this.modalActionLabel = action.label;
     action.node.on(Node.EventType.TOUCH_END, this.onModalAction, this);
+
+    const home = this.createButton(cardNode, "ModalHome", 72, -67, 96, 48, "HOME");
+    this.modalHomeNode = home.node;
+    home.node.on(Node.EventType.TOUCH_END, this.onModalHome, this);
+    home.node.active = false;
 
     this.modalHintLabel = this.createLabel(cardNode, "ModalHint", 0, -119, 240, 24, 12);
     this.modalHintLabel.color = new Color(130, 148, 181, 255);
@@ -450,27 +477,306 @@ export class SandfallGameComponent extends Component {
     this.drawHomeHero(heroGraphics);
     heroNode.on(Node.EventType.TOUCH_END, this.onHomeHeroTapped, this);
 
-    this.createHomeFeatureTile(contentNode, "RankingEntry", -112, -105, "排行", "即将开放", 0);
-    this.createHomeFeatureTile(contentNode, "AchievementEntry", 0, -105, "成就", "即将开放", 1);
-    this.createHomeFeatureTile(contentNode, "SkinEntry", 112, -105, "皮肤", "即将开放", 2);
+    this.homeProgressiveModeGraphics = this.createHomeModeButton(
+      contentNode,
+      "ProgressiveMode",
+      -80,
+      "进阶模式",
+      "升级 · 解锁颜色",
+      this.onProgressiveModeSelected,
+    );
+    this.homeClassicModeGraphics = this.createHomeModeButton(
+      contentNode,
+      "ClassicMode",
+      80,
+      "经典休闲",
+      "固定难度 · 自定义",
+      this.onClassicModeSelected,
+    );
+    this.createHomeDifficultyPanel(contentNode);
 
-    this.homeBestLabel = this.createLabel(contentNode, "HomeBest", 0, -194, 300, 30, 16);
+    this.homeBestLabel = this.createLabel(contentNode, "HomeBest", 0, -253, 300, 30, 15);
     this.homeBestLabel.color = new Color(190, 209, 233, 255);
 
-    const start = this.createButton(contentNode, "HomeStartButton", 0, -263, 252, 64, "▶  开始游戏");
+    const start = this.createButton(contentNode, "HomeStartButton", 0, -306, 252, 58, "▶  开始进阶模式");
     this.homeStartButtonNode = start.node;
+    this.homeStartButtonLabel = start.label;
     start.label.fontSize = 21;
     start.label.lineHeight = 27;
     start.node.on(Node.EventType.TOUCH_END, this.onHomeStartButton, this);
 
-    const hint = this.createLabel(contentNode, "HomeHint", 0, -316, 280, 24, 12);
-    hint.string = "点击主视觉可互动  ·  SPACE / ENTER 开始";
+    const hint = this.createLabel(contentNode, "HomeHint", 0, -345, 300, 22, 11);
+    hint.string = "选择模式后开始  ·  SPACE / ENTER 快速开始";
     hint.color = new Color(111, 142, 177, 255);
 
-    this.createHomeFeatureTile(contentNode, "SettingsEntry", -135, 340, "设置", "功能预留", 3, 82, 54);
     const version = this.createLabel(contentNode, "HomeVersion", 0, -374, 180, 20, 10);
     version.string = "SANDFALL  ·  PROTOTYPE 0.1";
     version.color = new Color(70, 99, 132, 255);
+    this.refreshHomeModeControls();
+  }
+
+  private createHomeModeButton(
+    parent: Node,
+    name: string,
+    x: number,
+    titleText: string,
+    subtitleText: string,
+    handler: () => void,
+  ): Graphics {
+    const node = new Node(name);
+    node.layer = parent.layer;
+    node.setPosition(x, -105);
+    parent.addChild(node);
+    node.addComponent(UITransform).setContentSize(150, 64);
+    const graphics = node.addComponent(Graphics);
+    const title = this.createLabel(node, `${name}Title`, 0, 10, 140, 25, 16);
+    title.string = titleText;
+    title.color = new Color(239, 247, 255, 255);
+    const subtitle = this.createLabel(node, `${name}Subtitle`, 0, -14, 140, 20, 10);
+    subtitle.string = subtitleText;
+    subtitle.color = new Color(143, 169, 202, 255);
+    node.on(Node.EventType.TOUCH_END, handler, this);
+    return graphics;
+  }
+
+  private createHomeDifficultyPanel(parent: Node): void {
+    const panelNode = new Node("HomeDifficultyPanel");
+    panelNode.layer = parent.layer;
+    panelNode.setPosition(0, -191);
+    parent.addChild(panelNode);
+    panelNode.addComponent(UITransform).setContentSize(310, 88);
+    const panel = panelNode.addComponent(Graphics);
+    panel.fillColor = new Color(9, 23, 40, 238);
+    panel.roundRect(-155, -44, 310, 88, 14);
+    panel.fill();
+    panel.strokeColor = new Color(54, 91, 128, 210);
+    panel.lineWidth = 1.5;
+    panel.roundRect(-154, -43, 308, 86, 13);
+    panel.stroke();
+
+    const progressiveDetails = new Node("ProgressiveDetails");
+    progressiveDetails.layer = panelNode.layer;
+    panelNode.addChild(progressiveDetails);
+    progressiveDetails.addComponent(UITransform).setContentSize(286, 72);
+    this.homeProgressiveDetailsNode = progressiveDetails;
+    const progressiveLabel = this.createLabel(
+      progressiveDetails,
+      "ProgressiveDetailsLabel",
+      0,
+      0,
+      282,
+      64,
+      13,
+    );
+    progressiveLabel.string = "每 5 次消除升级并加速\nLV4 解锁第 5 色  ·  LV6 速度封顶";
+    progressiveLabel.lineHeight = 23;
+    progressiveLabel.color = new Color(167, 205, 232, 255);
+
+    const classicControls = new Node("ClassicControls");
+    classicControls.layer = panelNode.layer;
+    panelNode.addChild(classicControls);
+    classicControls.addComponent(UITransform).setContentSize(300, 80);
+    this.homeClassicControlsNode = classicControls;
+
+    this.homeClassicColorLabel = this.createLabel(
+      classicControls,
+      "ClassicColorLabel",
+      -55,
+      20,
+      170,
+      26,
+      13,
+    );
+    this.homeClassicColorLabel.horizontalAlign = HorizontalTextAlignment.LEFT;
+    this.homeClassicColorLabel.color = new Color(207, 224, 243, 255);
+    this.createClassicAdjustButtons(classicControls, 20, this.onClassicColorDecrease, this.onClassicColorIncrease);
+
+    this.homeClassicSpeedLabel = this.createLabel(
+      classicControls,
+      "ClassicSpeedLabel",
+      -55,
+      -20,
+      170,
+      26,
+      13,
+    );
+    this.homeClassicSpeedLabel.horizontalAlign = HorizontalTextAlignment.LEFT;
+    this.homeClassicSpeedLabel.color = new Color(207, 224, 243, 255);
+    this.createClassicAdjustButtons(classicControls, -20, this.onClassicSpeedDecrease, this.onClassicSpeedIncrease);
+  }
+
+  private createClassicAdjustButtons(
+    parent: Node,
+    y: number,
+    decrease: () => void,
+    increase: () => void,
+  ): void {
+    const minus = this.createButton(parent, `Decrease${y}`, 83, y, 42, 30, "−");
+    minus.label.fontSize = 18;
+    minus.node.on(Node.EventType.TOUCH_END, decrease, this);
+    const plus = this.createButton(parent, `Increase${y}`, 132, y, 42, 30, "+");
+    plus.label.fontSize = 18;
+    plus.node.on(Node.EventType.TOUCH_END, increase, this);
+  }
+
+  private refreshHomeModeControls(): void {
+    this.drawHomeModeCard(
+      this.homeProgressiveModeGraphics,
+      this.selectedGameMode === "progressive",
+      new Color(65, 205, 195, 255),
+    );
+    this.drawHomeModeCard(
+      this.homeClassicModeGraphics,
+      this.selectedGameMode === "classic",
+      new Color(255, 196, 75, 255),
+    );
+    if (this.homeProgressiveDetailsNode !== null) {
+      this.homeProgressiveDetailsNode.active = this.selectedGameMode === "progressive";
+    }
+    if (this.homeClassicControlsNode !== null) {
+      this.homeClassicControlsNode.active = this.selectedGameMode === "classic";
+    }
+    if (this.homeClassicColorLabel !== null) {
+      this.homeClassicColorLabel.string = `颜色数量  ${this.classicColorCount}`;
+    }
+    if (this.homeClassicSpeedLabel !== null) {
+      const interval = CLASSIC_FALL_INTERVALS_MS[this.classicSpeedIndex];
+      this.homeClassicSpeedLabel.string = `下落速度  ${this.classicSpeedIndex + 1}/6  ·  ${interval}ms`;
+    }
+    if (this.homeStartButtonLabel !== null) {
+      this.homeStartButtonLabel.string = this.selectedGameMode === "progressive"
+        ? "▶  开始进阶模式"
+        : "▶  开始经典休闲";
+    }
+  }
+
+  private drawHomeModeCard(
+    graphics: Graphics | null,
+    selected: boolean,
+    accent: Color,
+  ): void {
+    if (graphics === null) {
+      return;
+    }
+    graphics.clear();
+    graphics.fillColor = selected
+      ? new Color(accent.r, accent.g, accent.b, 56)
+      : new Color(10, 25, 43, 238);
+    graphics.roundRect(-75, -32, 150, 64, 13);
+    graphics.fill();
+    graphics.strokeColor = selected
+      ? accent
+      : new Color(55, 83, 115, 220);
+    graphics.lineWidth = selected ? 2.5 : 1.25;
+    graphics.roundRect(-74, -31, 148, 62, 12);
+    graphics.stroke();
+    if (selected) {
+      graphics.fillColor = accent;
+      graphics.roundRect(-59, 27, 118, 3, 1.5);
+      graphics.fill();
+    }
+  }
+
+  private onProgressiveModeSelected(): void {
+    this.feedback.unlock();
+    if (this.selectedGameMode !== "progressive") {
+      this.selectedGameMode = "progressive";
+      this.highScoreStore = this.createHighScoreStoreForSelectedMode();
+      this.feedback.trigger("ui");
+      this.refreshHomeModeControls();
+    }
+  }
+
+  private onClassicModeSelected(): void {
+    this.feedback.unlock();
+    if (this.selectedGameMode !== "classic") {
+      this.selectedGameMode = "classic";
+      this.highScoreStore = this.createHighScoreStoreForSelectedMode();
+      this.feedback.trigger("ui");
+      this.refreshHomeModeControls();
+    }
+  }
+
+  private onClassicColorDecrease(): void {
+    this.feedback.unlock();
+    const next = Math.max(CLASSIC_MIN_COLOR_COUNT, this.classicColorCount - 1);
+    if (next !== this.classicColorCount) {
+      this.classicColorCount = next;
+      this.highScoreStore = this.createHighScoreStoreForSelectedMode();
+      this.feedback.trigger("ui");
+      this.refreshHomeModeControls();
+    }
+  }
+
+  private onClassicColorIncrease(): void {
+    this.feedback.unlock();
+    const next = Math.min(CLASSIC_MAX_COLOR_COUNT, this.classicColorCount + 1);
+    if (next !== this.classicColorCount) {
+      this.classicColorCount = next;
+      this.highScoreStore = this.createHighScoreStoreForSelectedMode();
+      this.feedback.trigger("ui");
+      this.refreshHomeModeControls();
+    }
+  }
+
+  private onClassicSpeedDecrease(): void {
+    this.feedback.unlock();
+    const next = Math.max(0, this.classicSpeedIndex - 1);
+    if (next !== this.classicSpeedIndex) {
+      this.classicSpeedIndex = next;
+      this.highScoreStore = this.createHighScoreStoreForSelectedMode();
+      this.feedback.trigger("ui");
+      this.refreshHomeModeControls();
+    }
+  }
+
+  private onClassicSpeedIncrease(): void {
+    this.feedback.unlock();
+    const next = Math.min(CLASSIC_FALL_INTERVALS_MS.length - 1, this.classicSpeedIndex + 1);
+    if (next !== this.classicSpeedIndex) {
+      this.classicSpeedIndex = next;
+      this.highScoreStore = this.createHighScoreStoreForSelectedMode();
+      this.feedback.trigger("ui");
+      this.refreshHomeModeControls();
+    }
+  }
+
+  private nearestClassicSpeedIndex(intervalMs: number): number {
+    let closestIndex = 0;
+    let closestDistance = Number.POSITIVE_INFINITY;
+    CLASSIC_FALL_INTERVALS_MS.forEach((candidate, index) => {
+      const distance = Math.abs(candidate - intervalMs);
+      if (distance < closestDistance) {
+        closestIndex = index;
+        closestDistance = distance;
+      }
+    });
+    return closestIndex;
+  }
+
+  private createRulesForSelectedMode(): Readonly<RulesConfig> {
+    const progressive = this.selectedGameMode === "progressive";
+    const classicInterval = CLASSIC_FALL_INTERVALS_MS[this.classicSpeedIndex]
+      ?? DEFAULT_RULES.normalFallIntervalMs;
+    return Object.freeze({
+      ...DEFAULT_RULES,
+      colorCount: progressive ? 4 : this.classicColorCount,
+      grainsPerCell: this.grainsPerCell,
+      sandSubsteps: this.sandSubsteps,
+      lockDelayMs: this.lockDelayMs,
+      normalFallIntervalMs: progressive ? DEFAULT_RULES.normalFallIntervalMs : classicInterval,
+      clearEffectDurationMs: this.clearEffectDurationMs,
+    });
+  }
+
+  private createHighScoreStoreForSelectedMode(): HighScoreStore {
+    if (this.selectedGameMode === "progressive") {
+      return new HighScoreStore(this.highScoreStorage);
+    }
+    const interval = CLASSIC_FALL_INTERVALS_MS[this.classicSpeedIndex]
+      ?? DEFAULT_RULES.normalFallIntervalMs;
+    const storageKey = `sandfall.high-score.classic.c${this.classicColorCount}.s${interval}.v1`;
+    return new HighScoreStore(this.highScoreStorage, storageKey);
   }
 
   private createHomeFeatureTile(
@@ -888,7 +1194,10 @@ export class SandfallGameComponent extends Component {
       && this.session.copyClearMaskTo(this.clearMaskCells);
     if (boardChanged || hasClearEffect || this.lastRenderedClearEffect) {
       const flashIntensity = hasClearEffect
-        ? clearFlashIntensity(this.session.getClearProgress(renderAheadSeconds))
+        ? clearFlashIntensity(
+          this.session.getClearProgress(renderAheadSeconds),
+          this.session.chainLevel + 1,
+        )
         : 0;
       const update = this.pixelBuffer.update(
         this.boardCells,
@@ -963,9 +1272,18 @@ export class SandfallGameComponent extends Component {
       this.timeLabel.string = `TIME   ${this.formatTime(this.session.elapsedMilliseconds)}`;
     }
     if (this.chainLabel !== null) {
-      this.chainLabel.string = this.session.chainLevel > 0
-        ? `CHAIN  ×${this.session.chainLevel}`
-        : "";
+      if (this.session.mode === "classic") {
+        this.chainLabel.string = this.session.chainLevel > 0
+          ? `CL  ·  CHAIN ×${this.session.chainLevel}`
+          : `CLASSIC  ·  ${this.session.activeColorCount}C`;
+      } else {
+        const chain = this.session.chainLevel > 0
+          ? `  CHAIN ×${this.session.chainLevel}`
+          : "";
+        this.chainLabel.string = chain === ""
+          ? `LEVEL ${this.session.level}`
+          : `LV ${this.session.level}${chain}`;
+      }
     }
 
     const phase = this.session.phase;
@@ -989,11 +1307,17 @@ export class SandfallGameComponent extends Component {
 
     modal.active = true;
     if (phase === "Paused") {
+      this.modalHomeNode?.setPosition(72, -67);
+      if (this.modalHomeNode !== null) this.modalHomeNode.active = false;
+      this.modalActionNode?.setPosition(0, -67);
       if (this.modalTitleLabel !== null) this.modalTitleLabel.string = "PAUSED";
       if (this.modalSummaryLabel !== null) {
+        const difficulty = this.session.mode === "progressive"
+          ? `LEVEL  ${this.session.level}`
+          : `CLASSIC  ${this.session.activeColorCount} COLORS`;
         this.modalSummaryLabel.string = [
           `SCORE   ${this.formatScore(this.session.score)}`,
-          `TIME    ${this.formatTime(this.session.elapsedMilliseconds)}`,
+          `TIME    ${this.formatTime(this.session.elapsedMilliseconds)}    ${difficulty}`,
           `BEST    ${this.formatScore(this.highScoreStore.value)}`,
         ].join("\n");
       }
@@ -1007,11 +1331,16 @@ export class SandfallGameComponent extends Component {
       this.highScoreStore.record(this.session.score);
       this.gameOverRecorded = true;
     }
+    if (this.modalHomeNode !== null) this.modalHomeNode.active = true;
+    this.modalActionNode?.setPosition(-58, -67);
     if (this.modalTitleLabel !== null) this.modalTitleLabel.string = "GAME OVER";
     if (this.modalSummaryLabel !== null) {
+      const difficulty = this.session.mode === "progressive"
+        ? `LEVEL  ${this.session.level}`
+        : `CLASSIC  ${this.session.activeColorCount} COLORS`;
       this.modalSummaryLabel.string = [
         `SCORE   ${this.formatScore(this.session.score)}    BEST  ${this.formatScore(this.highScoreStore.value)}`,
-        `TIME    ${this.formatTime(this.session.elapsedMilliseconds)}`,
+        `TIME    ${this.formatTime(this.session.elapsedMilliseconds)}    ${difficulty}`,
         `CLEARS  ${this.session.clearCount}    MAX CHAIN  ×${this.session.maxChain}`,
       ].join("\n");
     }
@@ -1031,7 +1360,8 @@ export class SandfallGameComponent extends Component {
       return;
     }
     if (this.homeBestLabel !== null) {
-      this.homeBestLabel.string = `最高分  ${this.formatScore(this.highScoreStore.value)}`;
+      const mode = this.selectedGameMode === "progressive" ? "进阶模式" : "经典休闲";
+      this.homeBestLabel.string = `${mode}  ·  最高分  ${this.formatScore(this.highScoreStore.value)}`;
     }
 
     const step = Math.min(0.05, Math.max(0, deltaTime));
@@ -1076,12 +1406,42 @@ export class SandfallGameComponent extends Component {
 
   private updateScoreFeedback(deltaTime: number): void {
     const score = this.session.score;
-    if (score > this.lastRenderedScore) {
+    const level = this.session.level;
+    const colorCount = this.session.activeColorCount;
+    const chainLevel = this.session.chainLevel;
+    if (level > this.lastRenderedLevel) {
+      this.scoreFeedbackAmount = 0;
+      this.scoreFeedbackElapsedSeconds = 0;
+      this.scoreFeedbackShowsLevelUp = true;
+      this.scoreFeedbackShowsChain = false;
+      this.scorePulseElapsedSeconds = 0;
+      if (this.scoreFeedbackLabel !== null) {
+        this.scoreFeedbackLabel.string = colorCount > this.lastRenderedColorCount
+          ? `LEVEL ${level}  ·  NEW COLOR`
+          : `LEVEL ${level}  ·  SPEED UP`;
+        this.scoreFeedbackLabel.node.active = true;
+      }
+    } else if (chainLevel >= 2 && chainLevel > this.lastRenderedChainLevel) {
+      const added = Math.max(0, score - this.lastRenderedScore);
+      this.scoreFeedbackAmount = added;
+      this.scoreFeedbackElapsedSeconds = 0;
+      this.scoreFeedbackShowsLevelUp = false;
+      this.scoreFeedbackShowsChain = true;
+      this.scorePulseElapsedSeconds = 0;
+      if (this.scoreFeedbackLabel !== null) {
+        this.scoreFeedbackLabel.string = `CHAIN ×${chainLevel}  ·  +${added}`;
+        this.scoreFeedbackLabel.node.active = true;
+      }
+    } else if (score > this.lastRenderedScore) {
       const added = score - this.lastRenderedScore;
       this.scoreFeedbackAmount = this.scoreFeedbackElapsedSeconds < 0.12
+        && !this.scoreFeedbackShowsLevelUp
+        && !this.scoreFeedbackShowsChain
         ? this.scoreFeedbackAmount + added
         : added;
       this.scoreFeedbackElapsedSeconds = 0;
+      this.scoreFeedbackShowsLevelUp = false;
+      this.scoreFeedbackShowsChain = false;
       this.scorePulseElapsedSeconds = 0;
       if (this.scoreFeedbackLabel !== null) {
         this.scoreFeedbackLabel.string = `+${this.scoreFeedbackAmount}`;
@@ -1090,6 +1450,8 @@ export class SandfallGameComponent extends Component {
     } else if (score < this.lastRenderedScore) {
       this.scoreFeedbackAmount = 0;
       this.scoreFeedbackElapsedSeconds = Number.POSITIVE_INFINITY;
+      this.scoreFeedbackShowsLevelUp = false;
+      this.scoreFeedbackShowsChain = false;
       this.scorePulseElapsedSeconds = Number.POSITIVE_INFINITY;
       if (this.scoreFeedbackLabel !== null) {
         this.scoreFeedbackLabel.node.active = false;
@@ -1097,24 +1459,36 @@ export class SandfallGameComponent extends Component {
       this.scoreLabel?.node.setScale(1, 1, 1);
     }
     this.lastRenderedScore = score;
+    this.lastRenderedLevel = level;
+    this.lastRenderedColorCount = colorCount;
+    this.lastRenderedChainLevel = chainLevel;
 
     const feedback = this.scoreFeedbackLabel;
     if (feedback !== null && Number.isFinite(this.scoreFeedbackElapsedSeconds)) {
       this.scoreFeedbackElapsedSeconds += Math.max(0, deltaTime);
-      const duration = 0.72;
+      const duration = this.scoreFeedbackShowsLevelUp || this.scoreFeedbackShowsChain
+        ? 1.05
+        : 0.72;
       const progress = Math.min(1, this.scoreFeedbackElapsedSeconds / duration);
       const fade = progress < 0.58 ? 1 : (1 - progress) / 0.42;
-      const scale = 0.82 + 0.2 * Math.min(1, progress / 0.16);
+      const scaleBoost = this.scoreFeedbackShowsChain ? 0.3 : 0.2;
+      const scale = 0.82 + scaleBoost * Math.min(1, progress / 0.16);
       feedback.node.setPosition(
         this.scoreFeedbackBaseX,
         this.scoreFeedbackBaseY + progress * 34,
       );
       feedback.node.setScale(scale, scale, 1);
-      feedback.color = new Color(255, 222, 102, Math.round(255 * fade));
+      feedback.color = this.scoreFeedbackShowsLevelUp
+        ? new Color(105, 220, 255, Math.round(255 * fade))
+        : this.scoreFeedbackShowsChain
+          ? new Color(255, 190, 68, Math.round(255 * fade))
+          : new Color(255, 222, 102, Math.round(255 * fade));
       if (progress >= 1) {
         feedback.node.active = false;
         this.scoreFeedbackElapsedSeconds = Number.POSITIVE_INFINITY;
         this.scoreFeedbackAmount = 0;
+        this.scoreFeedbackShowsLevelUp = false;
+        this.scoreFeedbackShowsChain = false;
       }
     }
 
@@ -1524,7 +1898,14 @@ export class SandfallGameComponent extends Component {
   private startNewGame(): void {
     this.stopHorizontalInput();
     this.cancelActiveTouchGesture();
+    this.rules = this.createRulesForSelectedMode();
+    this.session = new GameSession({
+      rules: this.rules,
+      mode: this.selectedGameMode,
+    });
     this.session.start(Date.now());
+    this.lastRenderedBoardRevision = -1;
+    this.lastRenderedClearEffect = false;
     this.resetFeedbackState();
     this.runner.reset();
     this.pieceAnimator.reset(this.session.lockSequence);
@@ -1565,6 +1946,24 @@ export class SandfallGameComponent extends Component {
     }
   }
 
+  private onModalHome(): void {
+    if (this.session.phase !== "GameOver") {
+      return;
+    }
+    this.feedback.unlock();
+    this.rules = this.createRulesForSelectedMode();
+    this.session = new GameSession({ rules: this.rules, mode: this.selectedGameMode });
+    this.runner.reset();
+    this.pieceAnimator.reset(0);
+    this.lastRenderedBoardRevision = -1;
+    this.lastRenderedClearEffect = false;
+    this.renderedPreviewKey = "";
+    this.gameOverRecorded = false;
+    this.resetFeedbackState();
+    this.feedback.trigger("ui");
+    this.renderFrame(0);
+  }
+
   private moveActivePiece(direction: -1 | 1): boolean {
     const moved = direction === -1 ? this.session.moveLeft() : this.session.moveRight();
     if (moved) {
@@ -1598,7 +1997,7 @@ export class SandfallGameComponent extends Component {
       this.feedback.trigger("sandify");
     }
     if (phase === "Clearing" && this.lastFeedbackPhase !== "Clearing") {
-      this.feedback.trigger(this.session.chainLevel > 0 ? "clear-chain" : "clear");
+      this.feedback.triggerClear(this.session.chainLevel + 1);
     }
     if (phase === "GameOver" && this.lastFeedbackPhase !== "GameOver") {
       this.feedback.trigger("game-over");
@@ -1611,6 +2010,18 @@ export class SandfallGameComponent extends Component {
   private resetFeedbackState(): void {
     this.lastFeedbackPhase = this.session.phase;
     this.lastFeedbackLockSequence = this.session.lockSequence;
+    this.lastRenderedScore = this.session.score;
+    this.lastRenderedLevel = this.session.level;
+    this.lastRenderedColorCount = this.session.activeColorCount;
+    this.lastRenderedChainLevel = this.session.chainLevel;
+    this.scoreFeedbackAmount = 0;
+    this.scoreFeedbackElapsedSeconds = Number.POSITIVE_INFINITY;
+    this.scoreFeedbackShowsLevelUp = false;
+    this.scoreFeedbackShowsChain = false;
+    this.scorePulseElapsedSeconds = Number.POSITIVE_INFINITY;
+    if (this.scoreFeedbackLabel !== null) {
+      this.scoreFeedbackLabel.node.active = false;
+    }
   }
 
   private onApplicationHide(): void {

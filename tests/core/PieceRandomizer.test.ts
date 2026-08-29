@@ -36,4 +36,22 @@ describe("PieceRandomizer", () => {
     restored.setState(state);
     expect(sequence(restored, 30)).toEqual(sequence(original, 30));
   });
+
+  it("starts a deterministic fresh color bag when more colors are unlocked", () => {
+    const first = new PieceRandomizer(88, TETROMINOES, 4);
+    const second = new PieceRandomizer(88, TETROMINOES, 4);
+    sequence(first, 7);
+    sequence(second, 7);
+
+    first.setColorCount(5);
+    second.setColorCount(5);
+    const firstUnlocked = sequence(first, 5);
+    const secondUnlocked = sequence(second, 5);
+
+    expect(first.colorCount).toBe(5);
+    expect(firstUnlocked).toEqual(secondUnlocked);
+    expect(new Set(firstUnlocked.map((item) => Number(item.split(":")[1])))).toEqual(
+      new Set([1, 2, 3, 4, 5]),
+    );
+  });
 });

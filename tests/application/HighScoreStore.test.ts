@@ -42,4 +42,16 @@ describe("HighScoreStore", () => {
     expect(highScore.record(99)).toBe(99);
     expect(highScore.value).toBe(99);
   });
+
+  it("keeps scores for different mode configurations independent", () => {
+    const storage = new MemoryStorage();
+    const progressive = new HighScoreStore(storage);
+    const classic = new HighScoreStore(storage, "sandfall.high-score.classic.c3.s900.v1");
+
+    progressive.record(500);
+    classic.record(1200);
+
+    expect(new HighScoreStore(storage).value).toBe(500);
+    expect(new HighScoreStore(storage, "sandfall.high-score.classic.c3.s900.v1").value).toBe(1200);
+  });
 });

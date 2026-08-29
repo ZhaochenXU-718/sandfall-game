@@ -8,7 +8,13 @@ import { PieceRasterizer } from "../core/PieceRasterizer";
 import type { ActivePieceState, PieceDefinition } from "../core/PieceTypes";
 import { Randomizer } from "../core/Randomizer";
 import type { RulesConfig } from "../core/RulesConfig";
-import { sandBoardSize } from "../core/RulesConfig";
+import {
+  colorCountForLevel,
+  levelForClearCount,
+  normalFallIntervalForLevel,
+  sandBoardSize,
+} from "../core/RulesConfig";
+import type { GameMode } from "../core/RulesConfig";
 import { SandSimulation } from "../core/SandSimulation";
 import { StableDetector } from "../core/StableDetector";
 import type { ConnectivityResult } from "../core/types";
@@ -17,10 +23,12 @@ import { GameStateMachine, type GamePhase } from "./GameStateMachine";
 export interface GameSessionOptions {
   readonly rules: RulesConfig;
   readonly pieces?: readonly PieceDefinition[];
+  readonly mode?: GameMode;
 }
 
 export class GameSession {
   private readonly rules: RulesConfig;
+  private readonly gameMode: GameMode;
   private readonly definitions: readonly PieceDefinition[];
   private readonly stateMachine = new GameStateMachine();
 
@@ -52,6 +60,7 @@ export class GameSession {
       throw new Error("GameSession requires at least one piece definition");
     }
     this.rules = Object.freeze({ ...options.rules });
+    this.gameMode = options.mode ?? "progressive";
     this.definitions = Object.freeze([...(options.pieces ?? TETROMINOES)]);
 
     const modules = this.createBoardModules(0);
@@ -85,6 +94,26 @@ export class GameSession {
 
   public get clearCount(): number {
     return this.completedClearCount;
+  }
+
+  public get level(): number {
+    return levelForClearCount(this.completedClearCount, this.gameMode);
+  }
+
+  public get normalFallIntervalMilliseconds(): number {
+    return normalFallIntervalForLevel(
+      this.rules.normalFallIntervalMs,
+      this.level,
+      this.gameMode,
+    );
+  }
+
+  public get activeColorCount(): number {
+    return colorCountForLevel(this.rules.colorCount, this.level, this.gameMode);
+  }
+
+  public get mode(): GameMode {
+    return this.gameMode;
   }
 
   public get maxChain(): number {
@@ -189,7 +218,7 @@ export class GameSession {
     this.pieceRandomizer = new PieceRandomizer(
       this.currentSeed,
       this.definitions,
-      this.rules.colorCount,
+      this.activeColorCount,
     );
     this.upcomingPiece = this.pieceRandomizer.next();
     this.stateMachine.start();
@@ -452,6 +481,7 @@ export class GameSession {
     const multiplier = 1 + (this.currentChain - 1) * this.rules.chainMultiplierStep;
     this.currentScore += Math.round(clearBase * multiplier);
     this.completedClearCount += result.spanningComponentCount;
+    this.pieceRandomizer?.setColorCount(this.activeColorCount);
     this.highestChain = Math.max(this.highestChain, this.currentChain);
     this.pendingClear = undefined;
     this.clearElapsedMs = 0;
@@ -502,8 +532,8 @@ export class GameSession {
 
   private currentFallIntervalMs(): number {
     return this.softDropActive
-      ? this.rules.softDropIntervalMs
-      : this.rules.normalFallIntervalMs;
+      ? Math.min(this.rules.softDropIntervalMs, this.normalFallIntervalMilliseconds)
+      : this.normalFallIntervalMilliseconds;
   }
 
   private requireActivePiece(): PieceController {

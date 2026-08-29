@@ -40,12 +40,12 @@ const CUE_CONFIG: Readonly<Record<FeedbackCue, CueConfig>> = Object.freeze({
     haptic: "medium",
   },
   sandify: { path: "audio/sandify", volume: 0.34, cooldownMs: 120 },
-  clear: { path: "audio/clear", volume: 0.76, cooldownMs: 240, haptic: "medium" },
+  clear: { path: "audio/clear", volume: 0.56, cooldownMs: 240, haptic: "light" },
   "clear-chain": {
     path: "audio/clear-chain",
-    volume: 0.84,
+    volume: 0.68,
     cooldownMs: 240,
-    haptic: "heavy",
+    haptic: "medium",
   },
   "game-over": {
     path: "audio/game-over",
@@ -99,12 +99,34 @@ export class CocosFeedbackController {
   }
 
   public trigger(cue: FeedbackCue): void {
+    this.triggerCue(cue, 1);
+  }
+
+  public triggerClear(chainLevel: number): void {
+    if (!Number.isInteger(chainLevel) || chainLevel <= 0) {
+      throw new RangeError("chainLevel must be a positive integer");
+    }
+    if (chainLevel === 1) {
+      this.triggerCue("clear", 1, "light");
+      return;
+    }
+    const volumeScale = Math.min(1.42, 1 + (chainLevel - 2) * 0.12);
+    const haptic: HapticStrength = chainLevel >= 4 ? "heavy" : "medium";
+    this.triggerCue("clear-chain", volumeScale, haptic);
+  }
+
+  private triggerCue(
+    cue: FeedbackCue,
+    volumeScale: number,
+    hapticOverride?: HapticStrength,
+  ): void {
     if (this.destroyed) {
       return;
     }
     const config = CUE_CONFIG[cue];
-    if (this.settings.hapticsEnabled && config.haptic !== undefined) {
-      this.haptics.vibrate(config.haptic);
+    const haptic = hapticOverride ?? config.haptic;
+    if (this.settings.hapticsEnabled && haptic !== undefined) {
+      this.haptics.vibrate(haptic);
     }
     if (!this.settings.sfxEnabled) {
       return;
@@ -118,7 +140,7 @@ export class CocosFeedbackController {
     void this.loading.then(() => {
       const clip = this.clips.get(config.path);
       if (!this.destroyed && clip !== undefined && this.settings.sfxEnabled) {
-        this.sfxSource.playOneShot(clip, config.volume);
+        this.sfxSource.playOneShot(clip, Math.min(1, config.volume * volumeScale));
       }
     });
   }

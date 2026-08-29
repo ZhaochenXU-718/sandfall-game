@@ -35,7 +35,7 @@ export interface ResponsiveGameLayout {
 export function fitResponsiveGameLayout(
   options: ResponsiveGameLayoutOptions,
 ): ResponsiveGameLayout {
-  const maxCellSize = options.maxCellSize ?? 28;
+  const maxCellSize = options.maxCellSize ?? 32;
   const horizontalMargin = options.horizontalMargin ?? 12;
   const hudHeight = options.hudHeight ?? 108;
   const bottomMargin = options.bottomMargin ?? 10;

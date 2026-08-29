@@ -56,7 +56,7 @@ interface BoardState {
 
 - `cells[y * width + x]` 保存颜色编号。
 - `0` 表示空单元。
-- 默认棋盘有 48,384 个单元，单份颜色数据约 47.3 KiB。
+- 默认棋盘有 19,440 个单元，单份颜色数据约 19 KiB。
 - 连通访问、删除标记等工作数组在初始化时一次性分配并复用。
 - 热路径中避免对象分配、数组扩容和闭包创建。
 
@@ -116,7 +116,7 @@ Boot → Menu → Spawning → Falling → LockDelay
 
 ### 7.1 方案
 
-- CPU 维护 `112 × 192` 的颜色网格。
+- CPU 维护 `108 × 180` 的颜色网格。
 - 渲染器维护复用的 `Uint8Array(width * height * 4)` RGBA 缓冲。
 - 根据脏标记写入颜色值。
 - 通过 `Texture2D.uploadData()` 更新一张动态纹理。

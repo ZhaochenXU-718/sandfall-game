@@ -97,20 +97,73 @@ writeWav("sandify", 0.42, (time, duration) => {
   return grains * decay;
 });
 
-function clearTone(time, duration, frequencies) {
-  const decay = envelope(time, duration, 0.008, 0.2) * Math.exp(-time * 2.2);
-  return frequencies.reduce((sum, frequency, index) => (
-    sum + sine(frequency, time, index * 0.4) * (0.2 / frequencies.length)
-  ), 0) * decay;
+function smoothstep(value) {
+  const normalized = clamp(value, 0, 1);
+  return normalized * normalized * (3 - 2 * normalized);
 }
 
-writeWav("clear", 0.58, (time, duration) => (
-  clearTone(time, duration, [523.25, 659.25, 783.99])
-));
+function glowEnvelope(time, duration, peakTime, releaseRate) {
+  const release = Math.min(1, Math.max(0, duration - time) / 0.18);
+  if (time < peakTime) {
+    return smoothstep(time / peakTime) * release;
+  }
+  return Math.exp(-(time - peakTime) * releaseRate) * release;
+}
 
-writeWav("clear-chain", 0.68, (time, duration) => (
-  clearTone(time, duration, [659.25, 783.99, 1046.5, 1318.5]) * 1.15
-));
+function softStrike(time, startTime, attack, decayRate) {
+  if (time < startTime) {
+    return 0;
+  }
+  const localTime = time - startTime;
+  return smoothstep(localTime / attack) * Math.exp(-localTime * decayRate);
+}
+
+/** Airy sand release plus an ascending, softly attacked reward chime. */
+function createClearSound(rootFrequency, chain = false) {
+  let fastNoise = 0;
+  let slowNoise = 0;
+  return (time, duration) => {
+    const rawNoise = noise();
+    fastNoise += (rawNoise - fastNoise) * 0.28;
+    slowNoise += (rawNoise - slowNoise) * 0.055;
+
+    const firstGlow = glowEnvelope(time, duration, 0.105, 4.8);
+    const secondGlow = chain && time >= 0.11
+      ? glowEnvelope(time - 0.11, duration - 0.11, 0.13, 5.6)
+      : 0;
+    const softTail = envelope(time, duration, 0.055, 0.24);
+    const sandSweep = (fastNoise - slowNoise)
+      * softTail
+      * (0.09 + firstGlow * 0.075 + secondGlow * 0.04);
+
+    const shimmerPhase = sine(3.2, time) * 0.045;
+    const firstStrike = softStrike(time, 0.035, 0.028, 4.7);
+    const shimmer = (
+      sine(rootFrequency, time, shimmerPhase) * 0.105
+      + sine(rootFrequency * 2.005, time, 0.7) * 0.036
+      + sine(rootFrequency * 3.01, time, 1.1) * 0.015
+    ) * Math.max(firstGlow * 0.7, firstStrike);
+    const sparkle = (
+      sine(rootFrequency * 4.01, time, 0.9) * 0.014
+      + sine(rootFrequency * 6.02, time, 0.25) * 0.007
+    ) * firstStrike;
+    const secondStrike = chain ? softStrike(time, 0.18, 0.026, 4.3) : 0;
+    const thirdStrike = chain ? softStrike(time, 0.34, 0.024, 4.8) : 0;
+    const chainShimmer = chain
+      ? (
+        sine(rootFrequency * 1.25, time, 0.35) * 0.11 * secondStrike
+        + sine(rootFrequency * 1.5, time, 0.5) * 0.105 * thirdStrike
+        + sine(rootFrequency * 3.005, time, 1.3) * 0.018 * Math.max(secondGlow, thirdStrike)
+      )
+      : 0;
+
+    return (sandSweep + shimmer + sparkle + chainShimmer) * 2.35;
+  };
+}
+
+writeWav("clear", 0.64, createClearSound(659.25));
+
+writeWav("clear-chain", 0.86, createClearSound(783.99, true));
 
 writeWav("game-over", 1.05, (time, duration) => {
   const notes = [293.66, 246.94, 196, 146.83];

@@ -90,6 +90,57 @@ describe("GameSession", () => {
     expect(session.chainLevel).toBe(0);
   });
 
+  it("increases normal fall speed every five clears and caps at level 6", () => {
+    const session = new GameSession({
+      rules: rules({ macroHeight: 20, normalFallIntervalMs: 600 }),
+      pieces: [I_PIECE],
+    });
+    session.start(12);
+
+    for (let clear = 0; clear < 25; clear += 1) {
+      session.tick(STEP);
+      session.hardDrop();
+      for (let tick = 0; tick < 20 && session.phase !== "Spawning"; tick += 1) {
+        session.tick(STEP);
+      }
+      expect(session.phase).toBe("Spawning");
+      if (clear === 4) {
+        expect(session.level).toBe(2);
+        expect(session.normalFallIntervalMilliseconds).toBe(520);
+      }
+      if (clear === 14) {
+        expect(session.level).toBe(4);
+        expect(session.activeColorCount).toBe(5);
+      }
+    }
+
+    expect(session.clearCount).toBe(25);
+    expect(session.level).toBe(6);
+    expect(session.normalFallIntervalMilliseconds).toBe(300);
+  });
+
+  it("keeps color count and fall speed fixed in classic mode", () => {
+    const session = new GameSession({
+      rules: rules({ macroHeight: 20, colorCount: 3, normalFallIntervalMs: 750 }),
+      pieces: [I_PIECE],
+      mode: "classic",
+    });
+    session.start(13);
+
+    for (let clear = 0; clear < 15; clear += 1) {
+      session.tick(STEP);
+      session.hardDrop();
+      for (let tick = 0; tick < 20 && session.phase !== "Spawning"; tick += 1) {
+        session.tick(STEP);
+      }
+    }
+
+    expect(session.clearCount).toBe(15);
+    expect(session.level).toBe(1);
+    expect(session.activeColorCount).toBe(3);
+    expect(session.normalFallIntervalMilliseconds).toBe(750);
+  });
+
   it("keeps a spanning component visible until the clear effect completes", () => {
     const session = new GameSession({
       rules: rules({ clearEffectDurationMs: 400 }),

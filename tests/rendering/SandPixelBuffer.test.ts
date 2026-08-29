@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   SandPixelBuffer,
   clearFlashIntensity,
-  clearGlowTargetChannel,
+  clearGlowColor,
 } from "../../assets/scripts/rendering/SandPixelBuffer";
 
 const PALETTE = [
@@ -120,7 +120,7 @@ describe("SandPixelBuffer", () => {
     })).toThrow(RangeError);
   });
 
-  it("glows only masked grains in their own hue and restores their texture", () => {
+  it("adds a saturated halo around masked grains and restores their texture", () => {
     const buffer = new SandPixelBuffer({
       width: 2,
       height: 1,
@@ -131,10 +131,11 @@ describe("SandPixelBuffer", () => {
     const mask = Uint8Array.from([1, 0]);
     buffer.update(cells);
     buffer.update(cells, mask, 1);
-    expect(buffer.pixels).toEqual(Uint8Array.from([
-      20, 38, 56, 255,
-      10, 20, 30, 255,
-    ]));
+    const core = [...buffer.pixels.slice(0, 3)];
+    const halo = [...buffer.pixels.slice(4, 7)];
+    expect(core[2]).toBe(255);
+    expect(halo[2]).toBeGreaterThan(30);
+    expect(halo[2]).toBeLessThan(core[2] ?? 0);
 
     buffer.update(cells);
     expect(buffer.pixels).toEqual(Uint8Array.from([
@@ -143,19 +144,23 @@ describe("SandPixelBuffer", () => {
     ]));
   });
 
-  it("brightens palette channels without flattening them to white", () => {
-    expect(clearGlowTargetChannel(255)).toBe(255);
-    expect(clearGlowTargetChannel(107)).toBe(169);
-    expect(clearGlowTargetChannel(78)).toBe(132);
-    expect(clearGlowTargetChannel(0)).toBe(0);
-    expect(() => clearGlowTargetChannel(255.1)).toThrow(RangeError);
+  it("creates high-saturation glow colors without flattening them to white", () => {
+    expect(clearGlowColor({ r: 255, g: 107, b: 107, a: 255 })).toEqual({
+      r: 255, g: 18, b: 18, a: 255,
+    });
+    expect(clearGlowColor({ r: 78, g: 205, b: 196, a: 255 })).toEqual({
+      r: 18, g: 255, b: 238, a: 255,
+    });
+    expect(() => clearGlowColor({ r: 255.1, g: 0, b: 0, a: 255 })).toThrow(RangeError);
   });
 
   it("produces two colored-light peaks across one clear effect", () => {
     expect(clearFlashIntensity(0)).toBe(0);
     expect(clearFlashIntensity(0.25)).toBeCloseTo(1);
+    expect(clearFlashIntensity(0.125)).toBeGreaterThan(0.75);
     expect(clearFlashIntensity(0.5)).toBeCloseTo(0);
     expect(clearFlashIntensity(0.75)).toBeCloseTo(1);
+    expect(clearFlashIntensity(0.25, 3)).toBeCloseTo(1.36);
     expect(clearFlashIntensity(1)).toBe(0);
   });
 });

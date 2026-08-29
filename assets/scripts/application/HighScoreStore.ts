@@ -9,7 +9,10 @@ export interface StringStorage {
 export class HighScoreStore {
   private cachedScore = 0;
 
-  public constructor(private readonly storage?: StringStorage) {
+  public constructor(
+    private readonly storage?: StringStorage,
+    private readonly storageKey = HIGH_SCORE_STORAGE_KEY,
+  ) {
     this.cachedScore = this.readStoredScore();
   }
 
@@ -25,7 +28,7 @@ export class HighScoreStore {
     }
     this.cachedScore = normalized;
     try {
-      this.storage?.setItem(HIGH_SCORE_STORAGE_KEY, String(normalized));
+      this.storage?.setItem(this.storageKey, String(normalized));
     } catch {
       // Storage can be disabled or full; the in-memory value still works this run.
     }
@@ -34,7 +37,7 @@ export class HighScoreStore {
 
   private readStoredScore(): number {
     try {
-      const raw = this.storage?.getItem(HIGH_SCORE_STORAGE_KEY);
+      const raw = this.storage?.getItem(this.storageKey);
       if (raw === undefined || raw === null || raw.trim() === "") {
         return 0;
       }
