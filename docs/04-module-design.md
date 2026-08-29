@@ -233,7 +233,9 @@ interface RulesConfig {
 
 ## 6. Audio 模块
 
-`AudioService` 管理 BGM、音效池、音量、静音和生命周期。平台进入后台时暂停；恢复后只在玩家允许和系统策略允许时继续。
+`CocosFeedbackController` 目前管理循环 BGM、单次音效、冷却限流和生命周期；首次玩家输入后才启动 BGM，以满足 Web 自动播放限制。移动、旋转、落地、硬降、沙化、普通消除、连锁、Game Over 和 UI 操作均有独立提示音。
+
+`PlatformHapticsService` 优先调用微信 `wx.vibrateShort` 或抖音 `tt.vibrateShort`，Web 环境回退到 `navigator.vibrate`；不支持或调用失败时静默跳过。BGM、音效和震动分别使用 `sandfall.feedback.v1` 保存开关，默认开启，表现反馈不得影响核心规则和计分。
 
 ## 7. Persistence 模块
 

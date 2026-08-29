@@ -4,6 +4,8 @@ import {
   Component,
   EventKeyboard,
   EventTouch,
+  game,
+  Game,
   Graphics,
   HorizontalTextAlignment,
   input,
@@ -22,6 +24,7 @@ import {
 } from "cc";
 import { FixedStepRunner } from "../application/FixedStepRunner";
 import { GameSession } from "../application/GameSession";
+import type { GamePhase } from "../application/GameStateMachine";
 import {
   GestureRecognizer,
   type GestureCommand,
@@ -29,6 +32,7 @@ import {
 import { HighScoreStore, type StringStorage } from "../application/HighScoreStore";
 import { InputAutoRepeat } from "../application/InputAutoRepeat";
 import { DEFAULT_RULES, type RulesConfig } from "../core/RulesConfig";
+import { CocosFeedbackController } from "./CocosFeedbackController";
 import { layoutPiecePreview } from "../rendering/PiecePreviewLayout";
 import { PieceVisualAnimator } from "../rendering/PieceVisualAnimator";
 import { fitResponsiveGameLayout } from "../rendering/ResponsiveGameLayout";
@@ -125,6 +129,7 @@ export class SandfallGameComponent extends Component {
   private modalActionLabel: Label | null = null;
   private modalHintLabel: Label | null = null;
   private modalBackdrop: Graphics | null = null;
+  private feedback!: CocosFeedbackController;
   private highScoreStore!: HighScoreStore;
   private gameOverRecorded = false;
   private lastRenderedScore = 0;
@@ -133,6 +138,8 @@ export class SandfallGameComponent extends Component {
   private scorePulseElapsedSeconds = Number.POSITIVE_INFINITY;
   private scoreFeedbackBaseY = 245;
   private renderedPreviewKey = "";
+  private lastFeedbackPhase: GamePhase = "Idle";
+  private lastFeedbackLockSequence = 0;
   private readonly pressedKeys = new Set<KeyCode>();
 
   protected onLoad(): void {
@@ -154,9 +161,11 @@ export class SandfallGameComponent extends Component {
     });
     this.applyResponsiveLayout();
     const globalStorage = (globalThis as { localStorage?: StringStorage }).localStorage;
+    this.feedback = new CocosFeedbackController(this.node, globalStorage);
     this.highScoreStore = new HighScoreStore(globalStorage);
     this.session = new GameSession({ rules: this.rules });
     this.session.start(Date.now());
+    this.resetFeedbackState();
     this.runner = new FixedStepRunner({
       fixedHz: this.rules.fixedHz,
       maxFrameDeltaSeconds: 0.25,
@@ -414,6 +423,7 @@ export class SandfallGameComponent extends Component {
     input.on(Input.EventType.KEY_DOWN, this.onKeyDown, this);
     input.on(Input.EventType.KEY_UP, this.onKeyUp, this);
     view.on("canvas-resize", this.onViewResized, this);
+    game.on(Game.EVENT_HIDE, this.onApplicationHide, this);
     const boardNode = this.sandSprite?.node;
     boardNode?.on(Node.EventType.TOUCH_START, this.onBoardTouchStart, this);
     boardNode?.on(Node.EventType.TOUCH_MOVE, this.onBoardTouchMove, this);
@@ -425,6 +435,7 @@ export class SandfallGameComponent extends Component {
     input.off(Input.EventType.KEY_DOWN, this.onKeyDown, this);
     input.off(Input.EventType.KEY_UP, this.onKeyUp, this);
     view.off("canvas-resize", this.onViewResized, this);
+    game.off(Game.EVENT_HIDE, this.onApplicationHide, this);
     const boardNode = this.sandSprite?.node;
     boardNode?.off(Node.EventType.TOUCH_START, this.onBoardTouchStart, this);
     boardNode?.off(Node.EventType.TOUCH_MOVE, this.onBoardTouchMove, this);
@@ -436,6 +447,7 @@ export class SandfallGameComponent extends Component {
     if (this.session !== undefined) {
       this.session.setSoftDrop(false);
     }
+    this.feedback?.pause();
   }
 
   protected update(deltaTime: number): void {
@@ -460,6 +472,8 @@ export class SandfallGameComponent extends Component {
 
   protected onDestroy(): void {
     view.off("canvas-resize", this.onViewResized, this);
+    game.off(Game.EVENT_HIDE, this.onApplicationHide, this);
+    this.feedback?.destroy();
     this.spriteFrame?.destroy();
     this.texture?.destroy();
     this.spriteFrame = null;
@@ -541,6 +555,7 @@ export class SandfallGameComponent extends Component {
   }
 
   private renderFrame(deltaTime: number, renderAheadSeconds = 0): void {
+    this.syncFeedbackState();
     this.session.copyBoardTo(this.boardCells);
     this.session.copyGrainVariantsTo(this.grainVariantCells);
     const hasClearEffect = this.session.copyClearMaskTo(this.clearMaskCells);
@@ -828,6 +843,7 @@ export class SandfallGameComponent extends Component {
       return;
     }
     this.pressedKeys.add(code);
+    this.feedback.unlock();
 
     switch (code) {
       case KeyCode.ARROW_LEFT:
@@ -844,13 +860,13 @@ export class SandfallGameComponent extends Component {
         break;
       case KeyCode.ARROW_UP:
       case KeyCode.KEY_X:
-        this.session.rotateCW();
+        this.rotateActivePiece(true);
         break;
       case KeyCode.KEY_Z:
-        this.session.rotateCCW();
+        this.rotateActivePiece(false);
         break;
       case KeyCode.SPACE:
-        this.session.hardDrop();
+        this.hardDropActivePiece();
         break;
       case KeyCode.KEY_P:
         this.togglePause();
@@ -881,6 +897,7 @@ export class SandfallGameComponent extends Component {
     if (this.activeTouchId !== undefined || !this.canAcceptGameplayInput()) {
       return;
     }
+    this.feedback.unlock();
     const point = event.getUILocation();
     this.activeTouchId = event.getID() ?? -1;
     this.touchGesture.begin(point.x, point.y);
@@ -942,22 +959,20 @@ export class SandfallGameComponent extends Component {
       switch (command.type) {
         case "moveHorizontal":
           for (let step = 0; step < command.steps; step += 1) {
-            const moved = command.direction === -1
-              ? this.session.moveLeft()
-              : this.session.moveRight();
+            const moved = this.moveActivePiece(command.direction);
             if (!moved) {
               break;
             }
           }
           break;
         case "rotateCW":
-          this.session.rotateCW();
+          this.rotateActivePiece(true);
           break;
         case "softDrop":
           this.session.setSoftDrop(true);
           break;
         case "hardDrop":
-          this.session.hardDrop();
+          this.hardDropActivePiece();
           break;
         default:
           break;
@@ -983,11 +998,7 @@ export class SandfallGameComponent extends Component {
     }
     this.horizontalDirection = direction;
     this.horizontalAutoRepeat.reset();
-    if (direction === -1) {
-      this.session.moveLeft();
-    } else {
-      this.session.moveRight();
-    }
+    this.moveActivePiece(direction);
   }
 
   private stopHorizontalInput(): void {
@@ -1002,9 +1013,7 @@ export class SandfallGameComponent extends Component {
     }
     const repeatCount = this.horizontalAutoRepeat.advance(deltaTime);
     for (let repeat = 0; repeat < repeatCount; repeat += 1) {
-      const moved = direction === -1
-        ? this.session.moveLeft()
-        : this.session.moveRight();
+      const moved = this.moveActivePiece(direction);
       if (!moved) {
         break;
       }
@@ -1054,6 +1063,12 @@ export class SandfallGameComponent extends Component {
       }
     }
     if (changed) {
+      this.feedback.trigger("ui");
+      if (this.session.phase === "Paused") {
+        this.feedback.pause();
+      } else {
+        this.feedback.resume();
+      }
       this.runner.reset();
       this.renderFrame(0);
     }
@@ -1063,22 +1078,86 @@ export class SandfallGameComponent extends Component {
     this.stopHorizontalInput();
     this.cancelActiveTouchGesture();
     this.session.start(Date.now());
+    this.resetFeedbackState();
     this.runner.reset();
     this.pieceAnimator.reset(this.session.lockSequence);
     this.renderedPreviewKey = "";
     this.gameOverRecorded = false;
+    this.feedback.trigger("ui");
+    this.feedback.resume();
     this.renderFrame(0);
   }
 
   private onPauseButton(): void {
+    this.feedback.unlock();
     this.togglePause();
   }
 
   private onModalAction(): void {
+    this.feedback.unlock();
     if (this.session.phase === "Paused") {
       this.togglePause();
     } else if (this.session.phase === "GameOver") {
       this.restartGame();
     }
+  }
+
+  private moveActivePiece(direction: -1 | 1): boolean {
+    const moved = direction === -1 ? this.session.moveLeft() : this.session.moveRight();
+    if (moved) {
+      this.feedback.trigger("move");
+    }
+    return moved;
+  }
+
+  private rotateActivePiece(clockwise: boolean): boolean {
+    const rotated = clockwise ? this.session.rotateCW() : this.session.rotateCCW();
+    if (rotated) {
+      this.feedback.trigger("rotate");
+    }
+    return rotated;
+  }
+
+  private hardDropActivePiece(): void {
+    const lockSequence = this.session.lockSequence;
+    this.session.hardDrop();
+    if (this.session.lockSequence > lockSequence) {
+      this.feedback.trigger("hard-drop");
+    }
+  }
+
+  private syncFeedbackState(): void {
+    const phase = this.session.phase;
+    if (phase === "LockDelay" && this.lastFeedbackPhase !== "LockDelay") {
+      this.feedback.trigger("land");
+    }
+    if (this.session.lockSequence > this.lastFeedbackLockSequence) {
+      this.feedback.trigger("sandify");
+    }
+    if (phase === "Clearing" && this.lastFeedbackPhase !== "Clearing") {
+      this.feedback.trigger(this.session.chainLevel > 0 ? "clear-chain" : "clear");
+    }
+    if (phase === "GameOver" && this.lastFeedbackPhase !== "GameOver") {
+      this.feedback.trigger("game-over");
+      this.feedback.pause();
+    }
+    this.lastFeedbackPhase = phase;
+    this.lastFeedbackLockSequence = this.session.lockSequence;
+  }
+
+  private resetFeedbackState(): void {
+    this.lastFeedbackPhase = this.session.phase;
+    this.lastFeedbackLockSequence = this.session.lockSequence;
+  }
+
+  private onApplicationHide(): void {
+    if (this.session !== undefined && this.session.phase !== "Paused") {
+      this.session.pause();
+      this.stopHorizontalInput();
+      this.cancelActiveTouchGesture();
+      this.runner?.reset();
+      this.renderFrame(0);
+    }
+    this.feedback?.pause();
   }
 }
