@@ -29,6 +29,21 @@ function rules(overrides: Partial<RulesConfig> = {}): RulesConfig {
 }
 
 describe("GameSession", () => {
+  it("stays idle without advancing time until the player starts", () => {
+    const session = new GameSession({ rules: rules(), pieces: [O_PIECE] });
+
+    expect(session.phase).toBe("Idle");
+    expect(session.nextPiece).toBeUndefined();
+    session.tick(STEP);
+    expect(session.phase).toBe("Idle");
+    expect(session.elapsedMilliseconds).toBe(0);
+
+    session.start(9);
+    expect(session.phase).toBe("Spawning");
+    expect(session.nextPiece).toBeDefined();
+    expect(session.elapsedMilliseconds).toBe(0);
+  });
+
   it("spawns, naturally falls, locks, and rasterizes a piece", () => {
     const session = new GameSession({ rules: rules(), pieces: [O_PIECE] });
     session.start(1);

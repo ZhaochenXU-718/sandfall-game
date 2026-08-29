@@ -129,6 +129,14 @@ export class SandfallGameComponent extends Component {
   private modalActionLabel: Label | null = null;
   private modalHintLabel: Label | null = null;
   private modalBackdrop: Graphics | null = null;
+  private homeScreenNode: Node | null = null;
+  private homeBackground: Graphics | null = null;
+  private homeHeroNode: Node | null = null;
+  private homeStartButtonNode: Node | null = null;
+  private homeBestLabel: Label | null = null;
+  private homeAnimationSeconds = 0;
+  private homeHeroImpulse = 0;
+  private readonly homeHeroBaseY = 42;
   private feedback!: CocosFeedbackController;
   private highScoreStore!: HighScoreStore;
   private gameOverRecorded = false;
@@ -164,7 +172,6 @@ export class SandfallGameComponent extends Component {
     this.feedback = new CocosFeedbackController(this.node, globalStorage);
     this.highScoreStore = new HighScoreStore(globalStorage);
     this.session = new GameSession({ rules: this.rules });
-    this.session.start(Date.now());
     this.resetFeedbackState();
     this.runner = new FixedStepRunner({
       fixedHz: this.rules.fixedHz,
@@ -230,6 +237,9 @@ export class SandfallGameComponent extends Component {
     }
     if (this.modalOverlayNode === null) {
       this.createModalOverlay();
+    }
+    if (this.homeScreenNode === null) {
+      this.createHomeScreen();
     }
   }
 
@@ -362,6 +372,206 @@ export class SandfallGameComponent extends Component {
     this.modalOverlayNode = overlayNode;
   }
 
+  private createHomeScreen(): void {
+    const homeNode = new Node("HomeScreen");
+    homeNode.layer = this.node.layer;
+    this.node.addChild(homeNode);
+    homeNode.addComponent(UITransform).setContentSize(360, 800);
+    this.homeScreenNode = homeNode;
+    this.homeBackground = homeNode.addComponent(Graphics);
+
+    const brandNode = new Node("HomeBrand");
+    brandNode.layer = homeNode.layer;
+    brandNode.setPosition(0, 252);
+    homeNode.addChild(brandNode);
+    brandNode.addComponent(UITransform).setContentSize(310, 104);
+    const brandBackground = brandNode.addComponent(Graphics);
+    brandBackground.fillColor = new Color(11, 25, 44, 232);
+    brandBackground.roundRect(-155, -52, 310, 104, 20);
+    brandBackground.fill();
+    brandBackground.strokeColor = new Color(72, 115, 163, 200);
+    brandBackground.lineWidth = 2;
+    brandBackground.roundRect(-154, -51, 308, 102, 19);
+    brandBackground.stroke();
+
+    const title = this.createLabel(brandNode, "HomeTitle", 0, 12, 286, 52, 36);
+    title.string = "SANDFALL";
+    title.color = new Color(244, 249, 255, 255);
+    const tagline = this.createLabel(brandNode, "HomeTagline", 0, -29, 270, 26, 14);
+    tagline.string = "让颜色贯穿沙海";
+    tagline.color = new Color(150, 196, 230, 255);
+
+    const brandAccentNode = new Node("BrandAccent");
+    brandAccentNode.layer = brandNode.layer;
+    brandAccentNode.setPosition(0, -48);
+    brandNode.addChild(brandAccentNode);
+    brandAccentNode.addComponent(UITransform).setContentSize(144, 5);
+    const brandAccent = brandAccentNode.addComponent(Graphics);
+    const accentColors = [
+      new Color(65, 205, 195, 255),
+      new Color(81, 133, 226, 255),
+      new Color(255, 99, 107, 255),
+      new Color(255, 196, 75, 255),
+    ];
+    accentColors.forEach((color, index) => {
+      brandAccent.fillColor = color;
+      brandAccent.roundRect(-70 + index * 36, 0, 32, 4, 2);
+      brandAccent.fill();
+    });
+
+    const heroNode = new Node("HomeHero");
+    heroNode.layer = homeNode.layer;
+    heroNode.setPosition(0, this.homeHeroBaseY);
+    homeNode.addChild(heroNode);
+    heroNode.addComponent(UITransform).setContentSize(220, 190);
+    this.homeHeroNode = heroNode;
+    const heroGraphics = heroNode.addComponent(Graphics);
+    this.drawHomeHero(heroGraphics);
+    heroNode.on(Node.EventType.TOUCH_END, this.onHomeHeroTapped, this);
+
+    this.createHomeFeatureTile(homeNode, "RankingEntry", -112, -105, "排行", "即将开放", 0);
+    this.createHomeFeatureTile(homeNode, "AchievementEntry", 0, -105, "成就", "即将开放", 1);
+    this.createHomeFeatureTile(homeNode, "SkinEntry", 112, -105, "皮肤", "即将开放", 2);
+
+    this.homeBestLabel = this.createLabel(homeNode, "HomeBest", 0, -194, 300, 30, 16);
+    this.homeBestLabel.color = new Color(190, 209, 233, 255);
+
+    const start = this.createButton(homeNode, "HomeStartButton", 0, -263, 252, 64, "▶  开始游戏");
+    this.homeStartButtonNode = start.node;
+    start.label.fontSize = 21;
+    start.label.lineHeight = 27;
+    start.node.on(Node.EventType.TOUCH_END, this.onHomeStartButton, this);
+
+    const hint = this.createLabel(homeNode, "HomeHint", 0, -316, 280, 24, 12);
+    hint.string = "点击主视觉可互动  ·  SPACE / ENTER 开始";
+    hint.color = new Color(111, 142, 177, 255);
+
+    this.createHomeFeatureTile(homeNode, "SettingsEntry", -135, 340, "设置", "功能预留", 3, 82, 54);
+    const version = this.createLabel(homeNode, "HomeVersion", 0, -374, 180, 20, 10);
+    version.string = "SANDFALL  ·  PROTOTYPE 0.1";
+    version.color = new Color(70, 99, 132, 255);
+  }
+
+  private createHomeFeatureTile(
+    parent: Node,
+    name: string,
+    x: number,
+    y: number,
+    titleText: string,
+    subtitleText: string,
+    colorIndex: number,
+    width = 88,
+    height = 66,
+  ): void {
+    const node = new Node(name);
+    node.layer = parent.layer;
+    node.setPosition(x, y);
+    parent.addChild(node);
+    node.addComponent(UITransform).setContentSize(width, height);
+    const graphics = node.addComponent(Graphics);
+    const color = DEFAULT_SAND_PALETTE[(colorIndex % (DEFAULT_SAND_PALETTE.length - 1)) + 1];
+    if (color === undefined) {
+      return;
+    }
+    graphics.fillColor = new Color(12, 27, 47, 238);
+    graphics.roundRect(-width / 2, -height / 2, width, height, 13);
+    graphics.fill();
+    graphics.strokeColor = new Color(color.r, color.g, color.b, 150);
+    graphics.lineWidth = 1.5;
+    graphics.roundRect(-width / 2 + 1, -height / 2 + 1, width - 2, height - 2, 12);
+    graphics.stroke();
+    graphics.fillColor = new Color(color.r, color.g, color.b, 220);
+    graphics.roundRect(-width / 2 + 8, height / 2 - 8, width - 16, 3, 1.5);
+    graphics.fill();
+
+    const title = this.createLabel(node, `${name}Title`, 0, 8, width - 8, 24, 15);
+    title.string = titleText;
+    title.color = new Color(232, 241, 252, 255);
+    const subtitle = this.createLabel(node, `${name}Subtitle`, 0, -15, width - 6, 18, 10);
+    subtitle.string = subtitleText;
+    subtitle.color = new Color(105, 134, 168, 255);
+  }
+
+  private drawHomeHero(graphics: Graphics): void {
+    graphics.clear();
+    graphics.fillColor = new Color(0, 0, 0, 76);
+    graphics.ellipse(-86, -78, 182, 28);
+    graphics.fill();
+
+    const cubes = [
+      { x: -70, y: -28, color: 1 },
+      { x: -22, y: -28, color: 2 },
+      { x: 26, y: -28, color: 3 },
+      { x: -22, y: 20, color: 4 },
+    ];
+    for (const cube of cubes) {
+      const color = DEFAULT_SAND_PALETTE[cube.color];
+      if (color !== undefined) {
+        this.drawHomeCube(graphics, cube.x, cube.y, 43, color);
+      }
+    }
+
+    const grains = [
+      { x: -50, y: -61, size: 7, color: 1 },
+      { x: 12, y: -68, size: 5, color: 2 },
+      { x: 48, y: -57, size: 8, color: 3 },
+      { x: -3, y: -83, size: 5, color: 4 },
+    ];
+    for (const grain of grains) {
+      const color = DEFAULT_SAND_PALETTE[grain.color];
+      if (color === undefined) continue;
+      graphics.fillColor = new Color(color.r, color.g, color.b, 230);
+      graphics.roundRect(grain.x, grain.y, grain.size, grain.size, 1.5);
+      graphics.fill();
+    }
+  }
+
+  private drawHomeCube(
+    graphics: Graphics,
+    x: number,
+    y: number,
+    size: number,
+    color: { readonly r: number; readonly g: number; readonly b: number; readonly a: number },
+  ): void {
+    const depth = 9;
+    graphics.fillColor = new Color(
+      Math.min(255, color.r + 34),
+      Math.min(255, color.g + 34),
+      Math.min(255, color.b + 34),
+      255,
+    );
+    graphics.moveTo(x, y + size);
+    graphics.lineTo(x + depth, y + size + depth);
+    graphics.lineTo(x + size + depth, y + size + depth);
+    graphics.lineTo(x + size, y + size);
+    graphics.close();
+    graphics.fill();
+
+    graphics.fillColor = new Color(
+      Math.max(0, color.r - 45),
+      Math.max(0, color.g - 45),
+      Math.max(0, color.b - 45),
+      255,
+    );
+    graphics.moveTo(x + size, y);
+    graphics.lineTo(x + size + depth, y + depth);
+    graphics.lineTo(x + size + depth, y + size + depth);
+    graphics.lineTo(x + size, y + size);
+    graphics.close();
+    graphics.fill();
+
+    graphics.fillColor = new Color(color.r, color.g, color.b, color.a);
+    graphics.roundRect(x, y, size, size, 6);
+    graphics.fill();
+    graphics.fillColor = new Color(255, 255, 255, 66);
+    graphics.roundRect(x + 6, y + size - 10, size - 12, 4, 2);
+    graphics.fill();
+    graphics.fillColor = new Color(255, 255, 255, 40);
+    graphics.circle(x + 10, y + 11, 2.4);
+    graphics.circle(x + 20, y + 17, 1.7);
+    graphics.fill();
+  }
+
   private createLabel(
     parent: Node,
     name: string,
@@ -455,6 +665,11 @@ export class SandfallGameComponent extends Component {
     if (this.session === undefined || this.runner === undefined) {
       return;
     }
+    if (this.session.phase === "Idle") {
+      this.renderHomeScreen(deltaTime);
+      this.renderHudAndModal(0);
+      return;
+    }
     if (this.session.phase === "Paused") {
       this.renderHudAndModal(0);
       return;
@@ -521,6 +736,60 @@ export class SandfallGameComponent extends Component {
       );
       this.modalBackdrop.fill();
     }
+
+    const homeTransform = this.homeScreenNode?.getComponent(UITransform);
+    homeTransform?.setContentSize(visibleSize.width, visibleSize.height);
+    this.redrawHomeBackground(visibleSize.width, visibleSize.height);
+  }
+
+  private redrawHomeBackground(width: number, height: number): void {
+    const graphics = this.homeBackground;
+    if (graphics === null) {
+      return;
+    }
+    const left = -width / 2;
+    const bottom = -height / 2;
+    graphics.clear();
+    graphics.fillColor = new Color(5, 13, 25, 255);
+    graphics.rect(left, bottom, width, height);
+    graphics.fill();
+
+    graphics.fillColor = new Color(25, 61, 89, 33);
+    for (let y = bottom + 28, row = 0; y < height / 2; y += 54, row += 1) {
+      const offset = row % 2 === 0 ? 0 : 27;
+      for (let x = left + 18 + offset; x < width / 2; x += 54) {
+        graphics.roundRect(x, y, 6, 6, 1.5);
+        graphics.roundRect(x + 8, y - 8, 4, 4, 1);
+        graphics.roundRect(x - 6, y - 12, 3, 3, 1);
+      }
+    }
+    graphics.fill();
+
+    graphics.fillColor = new Color(50, 143, 188, 18);
+    graphics.circle(0, this.homeHeroBaseY + 22, 142);
+    graphics.fill();
+    graphics.strokeColor = new Color(78, 174, 208, 30);
+    graphics.lineWidth = 2;
+    graphics.circle(0, this.homeHeroBaseY + 22, 120);
+    graphics.stroke();
+
+    const layers = [
+      { color: new Color(65, 205, 195, 30), y: bottom + 44, peak: 44 },
+      { color: new Color(81, 133, 226, 28), y: bottom + 28, peak: 58 },
+      { color: new Color(255, 99, 107, 24), y: bottom + 12, peak: 38 },
+    ];
+    layers.forEach((layer, index) => {
+      graphics.fillColor = layer.color;
+      graphics.moveTo(left, bottom);
+      graphics.lineTo(left, layer.y);
+      for (let x = left; x <= width / 2 + 48; x += 48) {
+        const wave = Math.sin((x + index * 37) * 0.027) * layer.peak * 0.35;
+        graphics.lineTo(x, layer.y + wave);
+      }
+      graphics.lineTo(width / 2, bottom);
+      graphics.close();
+      graphics.fill();
+    });
   }
 
   private onViewResized(): void {
@@ -574,6 +843,7 @@ export class SandfallGameComponent extends Component {
     this.renderActivePiece(deltaTime, renderAheadSeconds);
     this.renderNextPiece();
     this.renderHudAndModal(deltaTime);
+    this.renderHomeScreen(deltaTime);
   }
 
   private renderHudAndModal(deltaTime: number): void {
@@ -593,6 +863,12 @@ export class SandfallGameComponent extends Component {
     const phase = this.session.phase;
     const modal = this.modalOverlayNode;
     if (modal === null) {
+      return;
+    }
+    this.setGameplayChromeVisible(phase !== "Idle");
+    if (phase === "Idle") {
+      modal.active = false;
+      if (this.pauseButtonLabel !== null) this.pauseButtonLabel.string = "Ⅱ";
       return;
     }
     if (phase !== "Paused" && phase !== "GameOver") {
@@ -634,6 +910,60 @@ export class SandfallGameComponent extends Component {
     if (this.modalActionLabel !== null) this.modalActionLabel.string = "PLAY AGAIN";
     if (this.modalHintLabel !== null) this.modalHintLabel.string = "R 重新开始";
     if (this.pauseButtonLabel !== null) this.pauseButtonLabel.string = "Ⅱ";
+  }
+
+  private renderHomeScreen(deltaTime: number): void {
+    const home = this.homeScreenNode;
+    if (home === null) {
+      return;
+    }
+    const visible = this.session.phase === "Idle";
+    home.active = visible;
+    if (!visible) {
+      return;
+    }
+    if (this.homeBestLabel !== null) {
+      this.homeBestLabel.string = `最高分  ${this.formatScore(this.highScoreStore.value)}`;
+    }
+
+    const step = Math.min(0.05, Math.max(0, deltaTime));
+    this.homeAnimationSeconds += step;
+    this.homeHeroImpulse = Math.max(0, this.homeHeroImpulse - step * 1.8);
+    const hero = this.homeHeroNode;
+    if (hero !== null) {
+      const bob = Math.sin(this.homeAnimationSeconds * 1.9) * 7;
+      const idleSway = Math.sin(this.homeAnimationSeconds * 1.25) * 3.2;
+      const impulseSway = Math.sin(this.homeAnimationSeconds * 18) * 13 * this.homeHeroImpulse;
+      const impulseLift = Math.sin(this.homeHeroImpulse * Math.PI) * 14;
+      const scale = 1
+        + Math.sin(this.homeAnimationSeconds * 2.2) * 0.018
+        + this.homeHeroImpulse * 0.045;
+      hero.setPosition(0, this.homeHeroBaseY + bob + impulseLift);
+      hero.angle = idleSway + impulseSway;
+      hero.setScale(scale, scale, 1);
+    }
+    if (this.homeStartButtonNode !== null) {
+      const pulse = 1 + Math.sin(this.homeAnimationSeconds * 2.6) * 0.014;
+      this.homeStartButtonNode.setScale(pulse, pulse, 1);
+    }
+  }
+
+  private setGameplayChromeVisible(visible: boolean): void {
+    if (this.sandSprite !== null) {
+      this.sandSprite.node.active = visible;
+    }
+    if (this.statusPanelNode !== null) {
+      this.statusPanelNode.active = visible;
+    }
+    if (this.nextPanelNode !== null) {
+      this.nextPanelNode.active = visible;
+    }
+    if (this.pauseButtonNode !== null) {
+      this.pauseButtonNode.active = visible;
+    }
+    if (!visible && this.scoreFeedbackLabel !== null) {
+      this.scoreFeedbackLabel.node.active = false;
+    }
   }
 
   private updateScoreFeedback(deltaTime: number): void {
@@ -845,6 +1175,13 @@ export class SandfallGameComponent extends Component {
     this.pressedKeys.add(code);
     this.feedback.unlock();
 
+    if (this.session.phase === "Idle") {
+      if (code === KeyCode.SPACE || code === KeyCode.ENTER || code === KeyCode.NUM_ENTER) {
+        this.startNewGame();
+      }
+      return;
+    }
+
     switch (code) {
       case KeyCode.ARROW_LEFT:
       case KeyCode.KEY_A:
@@ -875,7 +1212,7 @@ export class SandfallGameComponent extends Component {
         this.togglePause();
         break;
       case KeyCode.KEY_R:
-        this.restartGame();
+        this.startNewGame();
         break;
       default:
         break;
@@ -1074,7 +1411,7 @@ export class SandfallGameComponent extends Component {
     }
   }
 
-  private restartGame(): void {
+  private startNewGame(): void {
     this.stopHorizontalInput();
     this.cancelActiveTouchGesture();
     this.session.start(Date.now());
@@ -1093,12 +1430,28 @@ export class SandfallGameComponent extends Component {
     this.togglePause();
   }
 
+  private onHomeStartButton(): void {
+    this.feedback.unlock();
+    if (this.session.phase === "Idle") {
+      this.startNewGame();
+    }
+  }
+
+  private onHomeHeroTapped(): void {
+    if (this.session.phase !== "Idle") {
+      return;
+    }
+    this.feedback.unlock();
+    this.feedback.trigger("ui");
+    this.homeHeroImpulse = 1;
+  }
+
   private onModalAction(): void {
     this.feedback.unlock();
     if (this.session.phase === "Paused") {
       this.togglePause();
     } else if (this.session.phase === "GameOver") {
-      this.restartGame();
+      this.startNewGame();
     }
   }
 
@@ -1151,7 +1504,12 @@ export class SandfallGameComponent extends Component {
   }
 
   private onApplicationHide(): void {
-    if (this.session !== undefined && this.session.phase !== "Paused") {
+    if (
+      this.session !== undefined
+      && this.session.phase !== "Idle"
+      && this.session.phase !== "Paused"
+      && this.session.phase !== "GameOver"
+    ) {
       this.session.pause();
       this.stopHorizontalInput();
       this.cancelActiveTouchGesture();
