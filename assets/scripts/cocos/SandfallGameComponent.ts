@@ -3,6 +3,7 @@ import {
   Color,
   Component,
   EventKeyboard,
+  EventTouch,
   Graphics,
   HorizontalTextAlignment,
   input,
@@ -21,6 +22,10 @@ import {
 } from "cc";
 import { FixedStepRunner } from "../application/FixedStepRunner";
 import { GameSession } from "../application/GameSession";
+import {
+  GestureRecognizer,
+  type GestureCommand,
+} from "../application/GestureRecognizer";
 import { HighScoreStore, type StringStorage } from "../application/HighScoreStore";
 import { InputAutoRepeat } from "../application/InputAutoRepeat";
 import { DEFAULT_RULES, type RulesConfig } from "../core/RulesConfig";
@@ -81,11 +86,22 @@ export class SandfallGameComponent extends Component {
   @property({ min: 15, max: 200, step: 5, tooltip: "Interval between repeated left/right moves" })
   public horizontalRepeatIntervalMs = 55;
 
+  @property({ min: 12, max: 50, step: 1, tooltip: "Horizontal drag points per block move" })
+  public touchHorizontalStepDistance = 22;
+
+  @property({ min: 60, max: 400, step: 10, tooltip: "Downward hold time before soft drop" })
+  public touchSoftDropHoldMs = 120;
+
+  @property({ min: 40, max: 180, step: 2, tooltip: "Fast downward swipe distance for hard drop" })
+  public touchHardDropDistance = 72;
+
   private session!: GameSession;
   private runner!: FixedStepRunner;
   private rules!: Readonly<RulesConfig>;
   private pieceAnimator!: PieceVisualAnimator;
   private horizontalAutoRepeat!: InputAutoRepeat;
+  private touchGesture!: GestureRecognizer;
+  private activeTouchId: number | undefined;
   private horizontalDirection: -1 | 0 | 1 = 0;
   private pixelBuffer!: SandPixelBuffer;
   private boardCells!: Uint8Array;
@@ -148,6 +164,11 @@ export class SandfallGameComponent extends Component {
       initialDelayMs: this.horizontalRepeatDelayMs,
       repeatIntervalMs: this.horizontalRepeatIntervalMs,
       maxRepeatsPerUpdate: 4,
+    });
+    this.touchGesture = new GestureRecognizer({
+      horizontalStepDistance: this.touchHorizontalStepDistance,
+      softDropHoldMs: this.touchSoftDropHoldMs,
+      hardDropDistance: this.touchHardDropDistance,
     });
     this.boardCells = new Uint8Array(this.session.boardWidth * this.session.boardHeight);
     this.grainVariantCells = new Uint8Array(this.boardCells.length);
@@ -383,13 +404,24 @@ export class SandfallGameComponent extends Component {
   protected onEnable(): void {
     input.on(Input.EventType.KEY_DOWN, this.onKeyDown, this);
     input.on(Input.EventType.KEY_UP, this.onKeyUp, this);
+    const boardNode = this.sandSprite?.node;
+    boardNode?.on(Node.EventType.TOUCH_START, this.onBoardTouchStart, this);
+    boardNode?.on(Node.EventType.TOUCH_MOVE, this.onBoardTouchMove, this);
+    boardNode?.on(Node.EventType.TOUCH_END, this.onBoardTouchEnd, this);
+    boardNode?.on(Node.EventType.TOUCH_CANCEL, this.onBoardTouchCancel, this);
   }
 
   protected onDisable(): void {
     input.off(Input.EventType.KEY_DOWN, this.onKeyDown, this);
     input.off(Input.EventType.KEY_UP, this.onKeyUp, this);
+    const boardNode = this.sandSprite?.node;
+    boardNode?.off(Node.EventType.TOUCH_START, this.onBoardTouchStart, this);
+    boardNode?.off(Node.EventType.TOUCH_MOVE, this.onBoardTouchMove, this);
+    boardNode?.off(Node.EventType.TOUCH_END, this.onBoardTouchEnd, this);
+    boardNode?.off(Node.EventType.TOUCH_CANCEL, this.onBoardTouchCancel, this);
     this.pressedKeys.clear();
     this.stopHorizontalInput();
+    this.cancelActiveTouchGesture();
     if (this.session !== undefined) {
       this.session.setSoftDrop(false);
     }
@@ -404,8 +436,14 @@ export class SandfallGameComponent extends Component {
       this.renderHudAndModal(0);
       return;
     }
+    if (this.activeTouchId !== undefined && this.canAcceptGameplayInput()) {
+      this.applyGestureCommands(this.touchGesture.advance(deltaTime));
+    }
     const frame = this.runner.advance(deltaTime);
     this.updateHeldHorizontalInput(deltaTime);
+    if (this.activeTouchId !== undefined && !this.canAcceptGameplayInput()) {
+      this.cancelActiveTouchGesture();
+    }
     this.renderFrame(deltaTime, frame.interpolationAlpha * this.runner.fixedDelta);
   }
 
@@ -426,6 +464,10 @@ export class SandfallGameComponent extends Component {
       height: this.session.boardHeight,
       format: Texture2D.PixelFormat.RGBA8888,
     });
+    texture.setWrapMode(
+      Texture2D.WrapMode.CLAMP_TO_EDGE,
+      Texture2D.WrapMode.CLAMP_TO_EDGE,
+    );
     texture.setFilters(Texture2D.Filter.NEAREST, Texture2D.Filter.NEAREST);
     texture.uploadData(this.pixelBuffer.pixels);
 
@@ -773,6 +815,106 @@ export class SandfallGameComponent extends Component {
     }
   }
 
+  private onBoardTouchStart(event: EventTouch): void {
+    if (this.activeTouchId !== undefined || !this.canAcceptGameplayInput()) {
+      return;
+    }
+    const point = event.getUILocation();
+    this.activeTouchId = event.getID() ?? -1;
+    this.touchGesture.begin(point.x, point.y);
+    event.propagationStopped = true;
+  }
+
+  private onBoardTouchMove(event: EventTouch): void {
+    if (!this.isActiveTouch(event)) {
+      return;
+    }
+    const point = event.getUILocation();
+    this.applyGestureCommands(this.touchGesture.move(point.x, point.y));
+    event.propagationStopped = true;
+    if (!this.canAcceptGameplayInput()) {
+      this.cancelActiveTouchGesture();
+    }
+    this.renderFrame(0);
+  }
+
+  private onBoardTouchEnd(event: EventTouch): void {
+    if (!this.isActiveTouch(event)) {
+      return;
+    }
+    const point = event.getUILocation();
+    const commands = this.touchGesture.end(point.x, point.y);
+    this.activeTouchId = undefined;
+    this.applyGestureCommands(commands);
+    event.propagationStopped = true;
+    this.renderFrame(0);
+  }
+
+  private onBoardTouchCancel(event: EventTouch): void {
+    if (!this.isActiveTouch(event)) {
+      return;
+    }
+    this.cancelActiveTouchGesture();
+    event.propagationStopped = true;
+    this.renderFrame(0);
+  }
+
+  private isActiveTouch(event: EventTouch): boolean {
+    return this.activeTouchId !== undefined && (event.getID() ?? -1) === this.activeTouchId;
+  }
+
+  private canAcceptGameplayInput(): boolean {
+    return this.session !== undefined
+      && (this.session.phase === "Falling" || this.session.phase === "LockDelay");
+  }
+
+  private applyGestureCommands(commands: readonly GestureCommand[]): void {
+    for (const command of commands) {
+      if (command.type === "softDrop" && !command.active) {
+        this.session.setSoftDrop(false);
+        continue;
+      }
+      if (!this.canAcceptGameplayInput()) {
+        continue;
+      }
+      switch (command.type) {
+        case "moveHorizontal":
+          for (let step = 0; step < command.steps; step += 1) {
+            const moved = command.direction === -1
+              ? this.session.moveLeft()
+              : this.session.moveRight();
+            if (!moved) {
+              break;
+            }
+          }
+          break;
+        case "rotateCW":
+          this.session.rotateCW();
+          break;
+        case "softDrop":
+          this.session.setSoftDrop(true);
+          break;
+        case "hardDrop":
+          this.session.hardDrop();
+          break;
+        default:
+          break;
+      }
+    }
+  }
+
+  private cancelActiveTouchGesture(): void {
+    if (this.touchGesture === undefined) {
+      this.activeTouchId = undefined;
+      return;
+    }
+    const commands = this.touchGesture.cancel();
+    this.activeTouchId = undefined;
+    if (this.session !== undefined) {
+      this.applyGestureCommands(commands);
+    }
+  }
+
   private beginHorizontalInput(direction: -1 | 1): void {
     if (this.horizontalDirection === direction) {
       return;
@@ -846,6 +988,7 @@ export class SandfallGameComponent extends Component {
       changed = this.session.pause();
       if (changed) {
         this.stopHorizontalInput();
+        this.cancelActiveTouchGesture();
       }
     }
     if (changed) {
@@ -856,6 +999,7 @@ export class SandfallGameComponent extends Component {
 
   private restartGame(): void {
     this.stopHorizontalInput();
+    this.cancelActiveTouchGesture();
     this.session.start(Date.now());
     this.runner.reset();
     this.pieceAnimator.reset(this.session.lockSequence);

@@ -4,6 +4,8 @@ export { GameSession } from "./GameSession";
 export type { GameSessionOptions } from "./GameSession";
 export { GameStateMachine } from "./GameStateMachine";
 export type { GamePhase } from "./GameStateMachine";
+export { DEFAULT_GESTURE_OPTIONS, GestureRecognizer } from "./GestureRecognizer";
+export type { GestureCommand, GestureRecognizerOptions } from "./GestureRecognizer";
 export { InputAutoRepeat } from "./InputAutoRepeat";
 export type { InputAutoRepeatOptions } from "./InputAutoRepeat";
 export { HIGH_SCORE_STORAGE_KEY, HighScoreStore } from "./HighScoreStore";

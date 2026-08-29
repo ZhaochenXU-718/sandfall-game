@@ -25,7 +25,7 @@ npm install
 - 目标版本：Cocos Creator 3.8.8（Cocos 官网当前提供的最新稳定下载）
 - Dashboard：2.2.1，安装于 `/Applications/CocosDashboard.app`
 - Creator：3.8.8，安装于 `/Applications/Cocos/Creator/3.8.8/CocosCreator.app`
-- 当前状态：引擎无关代码可通过 Node.js 构建和测试；Cocos 适配组件已通过已安装 3.8.8 引擎的 `cc.d.ts` 静态类型检查，但尚未经过编辑器编译、场景预览或真机验证
+- 当前状态：引擎无关代码可通过 Node.js 构建和测试；Cocos 适配组件已通过已安装 3.8.8 引擎的 `cc.d.ts` 静态类型检查、Web Mobile 构建与本地浏览器预览。真机兼容性和手感仍需在 iOS / Android 浏览器验证
 
 注意：`codesign --verify --deep --strict` 在当前 macOS 26.1 上仍报告厂商应用签名无效；本机由用户通过 macOS 手动例外完成安装。不要将本机安装目录或安装包直接分发给其他开发者，其他机器应从 Cocos 官网独立下载并完成自身安全检查。
 
