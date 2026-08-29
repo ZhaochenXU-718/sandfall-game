@@ -6,6 +6,7 @@ export {
 } from "./SandPixelBuffer";
 export { PieceVisualAnimator } from "./PieceVisualAnimator";
 export { layoutPiecePreview } from "./PiecePreviewLayout";
+export { fitResponsiveGameLayout } from "./ResponsiveGameLayout";
 export { sandifyGrainVisible } from "./SandifyDissolve";
 export type {
   PieceVisualAnimatorOptions,
@@ -15,6 +16,10 @@ export type {
   PiecePreviewCell,
   PiecePreviewLayout,
 } from "./PiecePreviewLayout";
+export type {
+  ResponsiveGameLayout,
+  ResponsiveGameLayoutOptions,
+} from "./ResponsiveGameLayout";
 export type {
   PixelBufferUpdateResult,
   RgbaColor,

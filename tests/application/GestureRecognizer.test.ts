@@ -27,15 +27,15 @@ describe("GestureRecognizer", () => {
     expect(gesture.end(92, 299)).toEqual([]);
   });
 
-  it("starts soft drop only after a downward hold and releases it on end", () => {
+  it("starts soft drop after a stationary long press and releases it on end", () => {
     const gesture = new GestureRecognizer();
     gesture.begin(100, 300);
 
-    expect(gesture.move(103, 265)).toEqual([]);
-    expect(gesture.advance(0.119)).toEqual([]);
+    expect(gesture.move(104, 297)).toEqual([]);
+    expect(gesture.advance(0.179)).toEqual([]);
     expect(gesture.advance(0.001)).toEqual([{ type: "softDrop", active: true }]);
-    expect(gesture.move(105, 220)).toEqual([]);
-    expect(gesture.end(105, 220)).toEqual([{ type: "softDrop", active: false }]);
+    expect(gesture.move(106, 295)).toEqual([]);
+    expect(gesture.end(106, 295)).toEqual([{ type: "softDrop", active: false }]);
   });
 
   it("maps a fast downward swipe to one hard drop", () => {
@@ -48,22 +48,21 @@ describe("GestureRecognizer", () => {
     expect(gesture.end(104, 180)).toEqual([{ type: "hardDrop" }]);
   });
 
-  it("turns a downward swipe into soft drop when the finger stays down", () => {
+  it("reserves a downward swipe for hard drop instead of starting soft drop", () => {
     const gesture = new GestureRecognizer();
     gesture.begin(100, 300);
     gesture.advance(0.08);
     gesture.move(102, 210);
 
-    expect(gesture.advance(0.04)).toEqual([{ type: "softDrop", active: true }]);
-    expect(gesture.end(102, 210)).toEqual([{ type: "softDrop", active: false }]);
+    expect(gesture.advance(0.1)).toEqual([]);
+    expect(gesture.end(102, 210)).toEqual([{ type: "hardDrop" }]);
   });
 
   it("does not hard drop after a slow downward drag", () => {
     const gesture = new GestureRecognizer();
     gesture.begin(100, 300);
-    gesture.advance(0.3);
-
     expect(gesture.move(100, 220)).toEqual([]);
+    gesture.advance(0.3);
     expect(gesture.end(100, 220)).toEqual([]);
   });
 
@@ -79,8 +78,7 @@ describe("GestureRecognizer", () => {
   it("releases an active soft drop when the touch is cancelled", () => {
     const gesture = new GestureRecognizer();
     gesture.begin(100, 300);
-    gesture.move(100, 260);
-    gesture.advance(0.12);
+    gesture.advance(0.18);
 
     expect(gesture.cancel()).toEqual([{ type: "softDrop", active: false }]);
     expect(gesture.cancel()).toEqual([]);
@@ -88,6 +86,7 @@ describe("GestureRecognizer", () => {
 
   it("rejects invalid options, deltas, and coordinates", () => {
     expect(() => new GestureRecognizer({ horizontalStepDistance: 0 })).toThrow(RangeError);
+    expect(() => new GestureRecognizer({ softDropMaxDriftDistance: 0 })).toThrow(RangeError);
     expect(() => new GestureRecognizer({ directionBias: 0.9 })).toThrow(RangeError);
     const gesture = new GestureRecognizer();
     expect(() => gesture.begin(Number.NaN, 0)).toThrow(RangeError);

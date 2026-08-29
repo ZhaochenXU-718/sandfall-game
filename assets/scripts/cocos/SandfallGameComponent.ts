@@ -31,6 +31,7 @@ import { InputAutoRepeat } from "../application/InputAutoRepeat";
 import { DEFAULT_RULES, type RulesConfig } from "../core/RulesConfig";
 import { layoutPiecePreview } from "../rendering/PiecePreviewLayout";
 import { PieceVisualAnimator } from "../rendering/PieceVisualAnimator";
+import { fitResponsiveGameLayout } from "../rendering/ResponsiveGameLayout";
 import { sandifyGrainVisible } from "../rendering/SandifyDissolve";
 import {
   DEFAULT_SAND_PALETTE,
@@ -89,8 +90,8 @@ export class SandfallGameComponent extends Component {
   @property({ min: 12, max: 50, step: 1, tooltip: "Horizontal drag points per block move" })
   public touchHorizontalStepDistance = 22;
 
-  @property({ min: 60, max: 400, step: 10, tooltip: "Downward hold time before soft drop" })
-  public touchSoftDropHoldMs = 120;
+  @property({ min: 100, max: 500, step: 10, tooltip: "Stationary press time before soft drop" })
+  public touchSoftDropHoldMs = 180;
 
   @property({ min: 40, max: 180, step: 2, tooltip: "Fast downward swipe distance for hard drop" })
   public touchHardDropDistance = 72;
@@ -113,6 +114,8 @@ export class SandfallGameComponent extends Component {
   private scoreFeedbackLabel: Label | null = null;
   private timeLabel: Label | null = null;
   private chainLabel: Label | null = null;
+  private statusPanelNode: Node | null = null;
+  private nextPanelNode: Node | null = null;
   private pauseButtonNode: Node | null = null;
   private pauseButtonLabel: Label | null = null;
   private modalOverlayNode: Node | null = null;
@@ -121,12 +124,14 @@ export class SandfallGameComponent extends Component {
   private modalActionNode: Node | null = null;
   private modalActionLabel: Label | null = null;
   private modalHintLabel: Label | null = null;
+  private modalBackdrop: Graphics | null = null;
   private highScoreStore!: HighScoreStore;
   private gameOverRecorded = false;
   private lastRenderedScore = 0;
   private scoreFeedbackAmount = 0;
   private scoreFeedbackElapsedSeconds = Number.POSITIVE_INFINITY;
   private scorePulseElapsedSeconds = Number.POSITIVE_INFINITY;
+  private scoreFeedbackBaseY = 245;
   private renderedPreviewKey = "";
   private readonly pressedKeys = new Set<KeyCode>();
 
@@ -147,6 +152,7 @@ export class SandfallGameComponent extends Component {
       normalFallIntervalMs: this.normalFallIntervalMs,
       clearEffectDurationMs: this.clearEffectDurationMs,
     });
+    this.applyResponsiveLayout();
     const globalStorage = (globalThis as { localStorage?: StringStorage }).localStorage;
     this.highScoreStore = new HighScoreStore(globalStorage);
     this.session = new GameSession({ rules: this.rules });
@@ -223,6 +229,7 @@ export class SandfallGameComponent extends Component {
     panelNode.layer = this.node.layer;
     panelNode.setPosition(102, 342);
     this.node.addChild(panelNode);
+    this.nextPanelNode = panelNode;
     panelNode.addComponent(UITransform).setContentSize(88, 98);
 
     const panel = panelNode.addComponent(Graphics);
@@ -260,6 +267,7 @@ export class SandfallGameComponent extends Component {
     panelNode.layer = this.node.layer;
     panelNode.setPosition(-102, 342);
     this.node.addChild(panelNode);
+    this.statusPanelNode = panelNode;
     panelNode.addComponent(UITransform).setContentSize(112, 98);
 
     const panel = panelNode.addComponent(Graphics);
@@ -310,6 +318,7 @@ export class SandfallGameComponent extends Component {
     overlayNode.addComponent(UITransform).setContentSize(360, 800);
 
     const backdrop = overlayNode.addComponent(Graphics);
+    this.modalBackdrop = backdrop;
     backdrop.fillColor = new Color(3, 7, 15, 205);
     backdrop.rect(-180, -400, 360, 800);
     backdrop.fill();
@@ -404,6 +413,7 @@ export class SandfallGameComponent extends Component {
   protected onEnable(): void {
     input.on(Input.EventType.KEY_DOWN, this.onKeyDown, this);
     input.on(Input.EventType.KEY_UP, this.onKeyUp, this);
+    view.on("canvas-resize", this.onViewResized, this);
     const boardNode = this.sandSprite?.node;
     boardNode?.on(Node.EventType.TOUCH_START, this.onBoardTouchStart, this);
     boardNode?.on(Node.EventType.TOUCH_MOVE, this.onBoardTouchMove, this);
@@ -414,6 +424,7 @@ export class SandfallGameComponent extends Component {
   protected onDisable(): void {
     input.off(Input.EventType.KEY_DOWN, this.onKeyDown, this);
     input.off(Input.EventType.KEY_UP, this.onKeyUp, this);
+    view.off("canvas-resize", this.onViewResized, this);
     const boardNode = this.sandSprite?.node;
     boardNode?.off(Node.EventType.TOUCH_START, this.onBoardTouchStart, this);
     boardNode?.off(Node.EventType.TOUCH_MOVE, this.onBoardTouchMove, this);
@@ -448,10 +459,61 @@ export class SandfallGameComponent extends Component {
   }
 
   protected onDestroy(): void {
+    view.off("canvas-resize", this.onViewResized, this);
     this.spriteFrame?.destroy();
     this.texture?.destroy();
     this.spriteFrame = null;
     this.texture = null;
+  }
+
+  private applyResponsiveLayout(): void {
+    if (this.rules === undefined) {
+      return;
+    }
+    const visibleSize = view.getVisibleSize();
+    const layout = fitResponsiveGameLayout({
+      visibleWidth: visibleSize.width,
+      visibleHeight: visibleSize.height,
+      macroWidth: this.rules.macroWidth,
+      macroHeight: this.rules.macroHeight,
+    });
+
+    const boardNode = this.sandSprite?.node;
+    boardNode?.setPosition(0, layout.boardY);
+    boardNode?.getComponent(UITransform)?.setContentSize(layout.boardWidth, layout.boardHeight);
+    if (this.pieceGraphics !== null) {
+      this.pieceGraphics.node.setPosition(0, 0);
+      this.pieceGraphics.node
+        .getComponent(UITransform)
+        ?.setContentSize(layout.boardWidth, layout.boardHeight);
+    }
+
+    this.statusPanelNode?.setPosition(layout.statusX, layout.hudPanelY);
+    this.nextPanelNode?.setPosition(layout.nextX, layout.hudPanelY);
+    this.pauseButtonNode?.setPosition(0, layout.pauseY);
+    this.scoreFeedbackBaseY = layout.feedbackY;
+    this.scoreFeedbackLabel?.node.setPosition(0, layout.feedbackY);
+
+    const overlayTransform = this.modalOverlayNode?.getComponent(UITransform);
+    overlayTransform?.setContentSize(visibleSize.width, visibleSize.height);
+    if (this.modalBackdrop !== null) {
+      this.modalBackdrop.clear();
+      this.modalBackdrop.fillColor = new Color(3, 7, 15, 205);
+      this.modalBackdrop.rect(
+        -visibleSize.width / 2,
+        -visibleSize.height / 2,
+        visibleSize.width,
+        visibleSize.height,
+      );
+      this.modalBackdrop.fill();
+    }
+  }
+
+  private onViewResized(): void {
+    this.applyResponsiveLayout();
+    if (this.session !== undefined) {
+      this.renderFrame(0);
+    }
   }
 
   private createTexture(): void {
@@ -590,7 +652,7 @@ export class SandfallGameComponent extends Component {
       const progress = Math.min(1, this.scoreFeedbackElapsedSeconds / duration);
       const fade = progress < 0.58 ? 1 : (1 - progress) / 0.42;
       const scale = 0.82 + 0.2 * Math.min(1, progress / 0.16);
-      feedback.node.setPosition(0, 245 + progress * 34);
+      feedback.node.setPosition(0, this.scoreFeedbackBaseY + progress * 34);
       feedback.node.setScale(scale, scale, 1);
       feedback.color = new Color(255, 222, 102, Math.round(255 * fade));
       if (progress >= 1) {

@@ -11,6 +11,7 @@ export interface GestureRecognizerOptions {
   readonly horizontalStepDistance: number;
   readonly downwardActivationDistance: number;
   readonly softDropHoldMs: number;
+  readonly softDropMaxDriftDistance: number;
   readonly hardDropDistance: number;
   readonly hardDropMaxDurationMs: number;
   readonly directionBias: number;
@@ -22,7 +23,8 @@ export const DEFAULT_GESTURE_OPTIONS: Readonly<GestureRecognizerOptions> = Objec
   horizontalActivationDistance: 14,
   horizontalStepDistance: 22,
   downwardActivationDistance: 24,
-  softDropHoldMs: 120,
+  softDropHoldMs: 180,
+  softDropMaxDriftDistance: 12,
   hardDropDistance: 72,
   hardDropMaxDurationMs: 250,
   directionBias: 1.15,
@@ -91,12 +93,9 @@ export class GestureRecognizer {
       return [];
     }
 
-    const deltaX = Math.abs(this.currentX - this.startX);
-    const downwardDistance = this.startY - this.currentY;
-    if (
-      downwardDistance >= this.options.downwardActivationDistance
-      && downwardDistance >= deltaX * this.options.directionBias
-    ) {
+    const deltaX = this.currentX - this.startX;
+    const deltaY = this.currentY - this.startY;
+    if (Math.hypot(deltaX, deltaY) <= this.options.softDropMaxDriftDistance) {
       this.mode = "softDrop";
       return [{ type: "softDrop", active: true }];
     }
@@ -196,6 +195,7 @@ export class GestureRecognizer {
       "horizontalStepDistance",
       "downwardActivationDistance",
       "softDropHoldMs",
+      "softDropMaxDriftDistance",
       "hardDropDistance",
       "hardDropMaxDurationMs",
     ];

@@ -19,8 +19,8 @@ export interface RulesConfig {
 }
 
 export const DEFAULT_RULES: Readonly<RulesConfig> = Object.freeze({
-  version: "0.8.0",
-  macroWidth: 10,
+  version: "0.9.0",
+  macroWidth: 14,
   macroHeight: 24,
   grainsPerCell: 12,
   colorCount: 4,

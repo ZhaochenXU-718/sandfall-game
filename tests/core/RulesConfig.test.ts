@@ -13,6 +13,8 @@ describe("DEFAULT_RULES", () => {
     expect(DEFAULT_RULES.hardDropPointsPerRow).toBe(2);
     expect(DEFAULT_RULES.spanningComponentBonus).toBe(200);
     expect(DEFAULT_RULES.chainMultiplierStep).toBe(0.5);
-    expect(sandBoardSize(DEFAULT_RULES)).toEqual({ width: 120, height: 288 });
+    expect(DEFAULT_RULES.macroWidth).toBe(14);
+    expect(DEFAULT_RULES.macroHeight).toBe(24);
+    expect(sandBoardSize(DEFAULT_RULES)).toEqual({ width: 168, height: 288 });
   });
 });

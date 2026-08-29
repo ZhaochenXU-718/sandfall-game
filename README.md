@@ -48,6 +48,7 @@ Cocos 原型的场景接入步骤见 [`docs/cocos-prototype-setup.md`](docs/coco
 7. [开发计划](docs/07-development-plan.md)
 8. [测试与验收](docs/08-testing-and-acceptance.md)
 9. [数据与运营设计](docs/09-data-and-analytics.md)
+10. [排行榜公平性备忘](docs/10-ranking-fairness.md)
 
 ## MVP 范围
 
