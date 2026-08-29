@@ -21,6 +21,7 @@ import {
 } from "cc";
 import { FixedStepRunner } from "../application/FixedStepRunner";
 import { GameSession } from "../application/GameSession";
+import { HighScoreStore, type StringStorage } from "../application/HighScoreStore";
 import { InputAutoRepeat } from "../application/InputAutoRepeat";
 import { DEFAULT_RULES, type RulesConfig } from "../core/RulesConfig";
 import { layoutPiecePreview } from "../rendering/PiecePreviewLayout";
@@ -92,6 +93,24 @@ export class SandfallGameComponent extends Component {
   private clearMaskCells!: Uint8Array;
   private texture: Texture2D | null = null;
   private spriteFrame: SpriteFrame | null = null;
+  private scoreLabel: Label | null = null;
+  private scoreFeedbackLabel: Label | null = null;
+  private timeLabel: Label | null = null;
+  private chainLabel: Label | null = null;
+  private pauseButtonNode: Node | null = null;
+  private pauseButtonLabel: Label | null = null;
+  private modalOverlayNode: Node | null = null;
+  private modalTitleLabel: Label | null = null;
+  private modalSummaryLabel: Label | null = null;
+  private modalActionNode: Node | null = null;
+  private modalActionLabel: Label | null = null;
+  private modalHintLabel: Label | null = null;
+  private highScoreStore!: HighScoreStore;
+  private gameOverRecorded = false;
+  private lastRenderedScore = 0;
+  private scoreFeedbackAmount = 0;
+  private scoreFeedbackElapsedSeconds = Number.POSITIVE_INFINITY;
+  private scorePulseElapsedSeconds = Number.POSITIVE_INFINITY;
   private renderedPreviewKey = "";
   private readonly pressedKeys = new Set<KeyCode>();
 
@@ -112,6 +131,8 @@ export class SandfallGameComponent extends Component {
       normalFallIntervalMs: this.normalFallIntervalMs,
       clearEffectDurationMs: this.clearEffectDurationMs,
     });
+    const globalStorage = (globalThis as { localStorage?: StringStorage }).localStorage;
+    this.highScoreStore = new HighScoreStore(globalStorage);
     this.session = new GameSession({ rules: this.rules });
     this.session.start(Date.now());
     this.runner = new FixedStepRunner({
@@ -168,6 +189,12 @@ export class SandfallGameComponent extends Component {
     if (this.nextPieceGraphics === null) {
       this.createNextPiecePanel();
     }
+    if (this.scoreLabel === null) {
+      this.createStatusPanel();
+    }
+    if (this.modalOverlayNode === null) {
+      this.createModalOverlay();
+    }
   }
 
   private createNextPiecePanel(): void {
@@ -207,6 +234,152 @@ export class SandfallGameComponent extends Component {
     this.nextPieceGraphics = pieceNode.addComponent(Graphics);
   }
 
+  private createStatusPanel(): void {
+    const panelNode = new Node("StatusPanel");
+    panelNode.layer = this.node.layer;
+    panelNode.setPosition(-102, 342);
+    this.node.addChild(panelNode);
+    panelNode.addComponent(UITransform).setContentSize(112, 98);
+
+    const panel = panelNode.addComponent(Graphics);
+    panel.fillColor = new Color(12, 18, 31, 232);
+    panel.roundRect(-56, -49, 112, 98, 10);
+    panel.fill();
+    panel.strokeColor = new Color(78, 99, 132, 255);
+    panel.lineWidth = 2;
+    panel.roundRect(-55, -48, 110, 96, 9);
+    panel.stroke();
+
+    this.scoreLabel = this.createLabel(panelNode, "ScoreLabel", 0, 23, 100, 32, 14);
+    this.scoreLabel.horizontalAlign = HorizontalTextAlignment.LEFT;
+    this.scoreLabel.string = "SCORE  000000";
+    this.scoreLabel.color = new Color(238, 243, 255, 255);
+
+    this.timeLabel = this.createLabel(panelNode, "TimeLabel", 0, -9, 100, 28, 13);
+    this.timeLabel.horizontalAlign = HorizontalTextAlignment.LEFT;
+    this.timeLabel.string = "TIME   00:00";
+    this.timeLabel.color = new Color(180, 194, 219, 255);
+
+    this.chainLabel = this.createLabel(panelNode, "ChainLabel", 0, -34, 100, 20, 12);
+    this.chainLabel.string = "";
+    this.chainLabel.color = new Color(255, 209, 92, 255);
+
+    this.scoreFeedbackLabel = this.createLabel(
+      this.node,
+      "ScoreFeedback",
+      0,
+      245,
+      160,
+      40,
+      22,
+    );
+    this.scoreFeedbackLabel.color = new Color(255, 222, 102, 255);
+    this.scoreFeedbackLabel.node.active = false;
+
+    const pauseButton = this.createButton(this.node, "PauseButton", 0, 367, 48, 38, "Ⅱ");
+    this.pauseButtonNode = pauseButton.node;
+    this.pauseButtonLabel = pauseButton.label;
+    pauseButton.node.on(Node.EventType.TOUCH_END, this.onPauseButton, this);
+  }
+
+  private createModalOverlay(): void {
+    const overlayNode = new Node("GameModalOverlay");
+    overlayNode.layer = this.node.layer;
+    this.node.addChild(overlayNode);
+    overlayNode.addComponent(UITransform).setContentSize(360, 800);
+
+    const backdrop = overlayNode.addComponent(Graphics);
+    backdrop.fillColor = new Color(3, 7, 15, 205);
+    backdrop.rect(-180, -400, 360, 800);
+    backdrop.fill();
+
+    const cardNode = new Node("ModalCard");
+    cardNode.layer = overlayNode.layer;
+    overlayNode.addChild(cardNode);
+    cardNode.addComponent(UITransform).setContentSize(286, 300);
+    const card = cardNode.addComponent(Graphics);
+    card.fillColor = new Color(16, 24, 40, 252);
+    card.roundRect(-143, -150, 286, 300, 18);
+    card.fill();
+    card.strokeColor = new Color(94, 121, 164, 255);
+    card.lineWidth = 2;
+    card.roundRect(-142, -149, 284, 298, 17);
+    card.stroke();
+
+    this.modalTitleLabel = this.createLabel(cardNode, "ModalTitle", 0, 100, 250, 42, 27);
+    this.modalTitleLabel.color = new Color(246, 249, 255, 255);
+    this.modalSummaryLabel = this.createLabel(cardNode, "ModalSummary", 0, 28, 240, 96, 15);
+    this.modalSummaryLabel.lineHeight = 24;
+    this.modalSummaryLabel.color = new Color(194, 207, 230, 255);
+
+    const action = this.createButton(cardNode, "ModalAction", 0, -67, 188, 48, "PLAY AGAIN");
+    this.modalActionNode = action.node;
+    this.modalActionLabel = action.label;
+    action.node.on(Node.EventType.TOUCH_END, this.onModalAction, this);
+
+    this.modalHintLabel = this.createLabel(cardNode, "ModalHint", 0, -119, 240, 24, 12);
+    this.modalHintLabel.color = new Color(130, 148, 181, 255);
+    overlayNode.active = false;
+    this.modalOverlayNode = overlayNode;
+  }
+
+  private createLabel(
+    parent: Node,
+    name: string,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    fontSize: number,
+  ): Label {
+    const labelNode = new Node(name);
+    labelNode.layer = parent.layer;
+    labelNode.setPosition(x, y);
+    parent.addChild(labelNode);
+    labelNode.addComponent(UITransform).setContentSize(width, height);
+    const label = labelNode.addComponent(Label);
+    label.fontSize = fontSize;
+    label.lineHeight = fontSize + 4;
+    label.horizontalAlign = HorizontalTextAlignment.CENTER;
+    label.verticalAlign = VerticalTextAlignment.CENTER;
+    return label;
+  }
+
+  private createButton(
+    parent: Node,
+    name: string,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    text: string,
+  ): { readonly node: Node; readonly label: Label } {
+    const buttonNode = new Node(name);
+    buttonNode.layer = parent.layer;
+    buttonNode.setPosition(x, y);
+    parent.addChild(buttonNode);
+    buttonNode.addComponent(UITransform).setContentSize(width, height);
+    const background = buttonNode.addComponent(Graphics);
+    background.fillColor = new Color(45, 92, 166, 255);
+    background.roundRect(-width / 2, -height / 2, width, height, Math.min(9, height / 2));
+    background.fill();
+    background.strokeColor = new Color(108, 162, 245, 255);
+    background.lineWidth = 1.5;
+    background.roundRect(
+      -width / 2 + 1,
+      -height / 2 + 1,
+      width - 2,
+      height - 2,
+      Math.min(8, height / 2 - 1),
+    );
+    background.stroke();
+
+    const label = this.createLabel(buttonNode, `${name}Label`, 0, 0, width - 8, height - 4, 14);
+    label.string = text;
+    label.color = new Color(248, 251, 255, 255);
+    return { node: buttonNode, label };
+  }
+
   protected onEnable(): void {
     input.on(Input.EventType.KEY_DOWN, this.onKeyDown, this);
     input.on(Input.EventType.KEY_UP, this.onKeyUp, this);
@@ -228,6 +401,7 @@ export class SandfallGameComponent extends Component {
       return;
     }
     if (this.session.phase === "Paused") {
+      this.renderHudAndModal(0);
       return;
     }
     const frame = this.runner.advance(deltaTime);
@@ -280,6 +454,132 @@ export class SandfallGameComponent extends Component {
     }
     this.renderActivePiece(deltaTime, renderAheadSeconds);
     this.renderNextPiece();
+    this.renderHudAndModal(deltaTime);
+  }
+
+  private renderHudAndModal(deltaTime: number): void {
+    this.updateScoreFeedback(deltaTime);
+    if (this.scoreLabel !== null) {
+      this.scoreLabel.string = `SCORE  ${this.formatScore(this.session.score)}`;
+    }
+    if (this.timeLabel !== null) {
+      this.timeLabel.string = `TIME   ${this.formatTime(this.session.elapsedMilliseconds)}`;
+    }
+    if (this.chainLabel !== null) {
+      this.chainLabel.string = this.session.chainLevel > 0
+        ? `CHAIN  ×${this.session.chainLevel}`
+        : "";
+    }
+
+    const phase = this.session.phase;
+    const modal = this.modalOverlayNode;
+    if (modal === null) {
+      return;
+    }
+    if (phase !== "Paused" && phase !== "GameOver") {
+      modal.active = false;
+      if (this.pauseButtonLabel !== null) {
+        this.pauseButtonLabel.string = "Ⅱ";
+      }
+      return;
+    }
+
+    modal.active = true;
+    if (phase === "Paused") {
+      if (this.modalTitleLabel !== null) this.modalTitleLabel.string = "PAUSED";
+      if (this.modalSummaryLabel !== null) {
+        this.modalSummaryLabel.string = [
+          `SCORE   ${this.formatScore(this.session.score)}`,
+          `TIME    ${this.formatTime(this.session.elapsedMilliseconds)}`,
+          `BEST    ${this.formatScore(this.highScoreStore.value)}`,
+        ].join("\n");
+      }
+      if (this.modalActionLabel !== null) this.modalActionLabel.string = "RESUME";
+      if (this.modalHintLabel !== null) this.modalHintLabel.string = "P / ESC 继续游戏";
+      if (this.pauseButtonLabel !== null) this.pauseButtonLabel.string = "▶";
+      return;
+    }
+
+    if (!this.gameOverRecorded) {
+      this.highScoreStore.record(this.session.score);
+      this.gameOverRecorded = true;
+    }
+    if (this.modalTitleLabel !== null) this.modalTitleLabel.string = "GAME OVER";
+    if (this.modalSummaryLabel !== null) {
+      this.modalSummaryLabel.string = [
+        `SCORE   ${this.formatScore(this.session.score)}    BEST  ${this.formatScore(this.highScoreStore.value)}`,
+        `TIME    ${this.formatTime(this.session.elapsedMilliseconds)}`,
+        `CLEARS  ${this.session.clearCount}    MAX CHAIN  ×${this.session.maxChain}`,
+      ].join("\n");
+    }
+    if (this.modalActionLabel !== null) this.modalActionLabel.string = "PLAY AGAIN";
+    if (this.modalHintLabel !== null) this.modalHintLabel.string = "R 重新开始";
+    if (this.pauseButtonLabel !== null) this.pauseButtonLabel.string = "Ⅱ";
+  }
+
+  private updateScoreFeedback(deltaTime: number): void {
+    const score = this.session.score;
+    if (score > this.lastRenderedScore) {
+      const added = score - this.lastRenderedScore;
+      this.scoreFeedbackAmount = this.scoreFeedbackElapsedSeconds < 0.12
+        ? this.scoreFeedbackAmount + added
+        : added;
+      this.scoreFeedbackElapsedSeconds = 0;
+      this.scorePulseElapsedSeconds = 0;
+      if (this.scoreFeedbackLabel !== null) {
+        this.scoreFeedbackLabel.string = `+${this.scoreFeedbackAmount}`;
+        this.scoreFeedbackLabel.node.active = true;
+      }
+    } else if (score < this.lastRenderedScore) {
+      this.scoreFeedbackAmount = 0;
+      this.scoreFeedbackElapsedSeconds = Number.POSITIVE_INFINITY;
+      this.scorePulseElapsedSeconds = Number.POSITIVE_INFINITY;
+      if (this.scoreFeedbackLabel !== null) {
+        this.scoreFeedbackLabel.node.active = false;
+      }
+      this.scoreLabel?.node.setScale(1, 1, 1);
+    }
+    this.lastRenderedScore = score;
+
+    const feedback = this.scoreFeedbackLabel;
+    if (feedback !== null && Number.isFinite(this.scoreFeedbackElapsedSeconds)) {
+      this.scoreFeedbackElapsedSeconds += Math.max(0, deltaTime);
+      const duration = 0.72;
+      const progress = Math.min(1, this.scoreFeedbackElapsedSeconds / duration);
+      const fade = progress < 0.58 ? 1 : (1 - progress) / 0.42;
+      const scale = 0.82 + 0.2 * Math.min(1, progress / 0.16);
+      feedback.node.setPosition(0, 245 + progress * 34);
+      feedback.node.setScale(scale, scale, 1);
+      feedback.color = new Color(255, 222, 102, Math.round(255 * fade));
+      if (progress >= 1) {
+        feedback.node.active = false;
+        this.scoreFeedbackElapsedSeconds = Number.POSITIVE_INFINITY;
+        this.scoreFeedbackAmount = 0;
+      }
+    }
+
+    if (this.scoreLabel !== null && Number.isFinite(this.scorePulseElapsedSeconds)) {
+      this.scorePulseElapsedSeconds += Math.max(0, deltaTime);
+      const pulseDuration = 0.24;
+      const progress = Math.min(1, this.scorePulseElapsedSeconds / pulseDuration);
+      const scale = 1 + Math.sin(progress * Math.PI) * 0.1;
+      this.scoreLabel.node.setScale(scale, scale, 1);
+      if (progress >= 1) {
+        this.scoreLabel.node.setScale(1, 1, 1);
+        this.scorePulseElapsedSeconds = Number.POSITIVE_INFINITY;
+      }
+    }
+  }
+
+  private formatScore(score: number): string {
+    return Math.max(0, Math.floor(score)).toString().padStart(6, "0");
+  }
+
+  private formatTime(elapsedMilliseconds: number): string {
+    const totalSeconds = Math.max(0, Math.floor(elapsedMilliseconds / 1000));
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return `${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
   }
 
   private renderNextPiece(): void {
@@ -451,11 +751,11 @@ export class SandfallGameComponent extends Component {
       case KeyCode.KEY_P:
         this.togglePause();
         break;
+      case KeyCode.ESCAPE:
+        this.togglePause();
+        break;
       case KeyCode.KEY_R:
-        this.session.start(Date.now());
-        this.runner.reset();
-        this.pieceAnimator.reset(this.session.lockSequence);
-        this.renderedPreviewKey = "";
+        this.restartGame();
         break;
       default:
         break;
@@ -539,10 +839,40 @@ export class SandfallGameComponent extends Component {
   }
 
   private togglePause(): void {
+    let changed = false;
     if (this.session.phase === "Paused") {
-      this.session.resume();
-    } else if (this.session.pause()) {
+      changed = this.session.resume();
+    } else {
+      changed = this.session.pause();
+      if (changed) {
+        this.stopHorizontalInput();
+      }
+    }
+    if (changed) {
       this.runner.reset();
+      this.renderFrame(0);
+    }
+  }
+
+  private restartGame(): void {
+    this.stopHorizontalInput();
+    this.session.start(Date.now());
+    this.runner.reset();
+    this.pieceAnimator.reset(this.session.lockSequence);
+    this.renderedPreviewKey = "";
+    this.gameOverRecorded = false;
+    this.renderFrame(0);
+  }
+
+  private onPauseButton(): void {
+    this.togglePause();
+  }
+
+  private onModalAction(): void {
+    if (this.session.phase === "Paused") {
+      this.togglePause();
+    } else if (this.session.phase === "GameOver") {
+      this.restartGame();
     }
   }
 }

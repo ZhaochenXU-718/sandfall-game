@@ -37,6 +37,7 @@ describe("PieceVisualAnimator", () => {
     expect(visual.update(0, piece(0, 0), undefined, 0, 0)?.y).toBe(0);
     expect(visual.update(0.1, piece(0, 0), undefined, 0, 0.5)?.y).toBeCloseTo(0.5);
     expect(visual.update(0.1, piece(0, 0), undefined, 0, 0.99)?.y).toBeCloseTo(0.99);
+    expect(visual.update(0, piece(0, 0), undefined, 0, 1 + Number.EPSILON)?.y).toBe(1);
     expect(visual.update(0, piece(0, 1), undefined, 0, 0)?.y).toBe(1);
   });
 

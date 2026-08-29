@@ -12,10 +12,14 @@ export interface RulesConfig {
   readonly lockDelayMs: number;
   readonly clearEffectDurationMs: number;
   readonly maxLockResets: number;
+  readonly softDropPointsPerRow: number;
+  readonly hardDropPointsPerRow: number;
+  readonly spanningComponentBonus: number;
+  readonly chainMultiplierStep: number;
 }
 
 export const DEFAULT_RULES: Readonly<RulesConfig> = Object.freeze({
-  version: "0.6.0",
+  version: "0.8.0",
   macroWidth: 10,
   macroHeight: 24,
   grainsPerCell: 12,
@@ -28,6 +32,10 @@ export const DEFAULT_RULES: Readonly<RulesConfig> = Object.freeze({
   lockDelayMs: 120,
   clearEffectDurationMs: 420,
   maxLockResets: 10,
+  softDropPointsPerRow: 1,
+  hardDropPointsPerRow: 2,
+  spanningComponentBonus: 200,
+  chainMultiplierStep: 0.5,
 });
 
 export function sandBoardSize(config: RulesConfig): {

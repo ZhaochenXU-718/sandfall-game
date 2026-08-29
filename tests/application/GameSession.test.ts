@@ -20,6 +20,10 @@ function rules(overrides: Partial<RulesConfig> = {}): RulesConfig {
     lockDelayMs: 100,
     clearEffectDurationMs: 0,
     maxLockResets: 2,
+    softDropPointsPerRow: 1,
+    hardDropPointsPerRow: 2,
+    spanningComponentBonus: 200,
+    chainMultiplierStep: 0.5,
     ...overrides,
   };
 }
@@ -53,6 +57,7 @@ describe("GameSession", () => {
     session.start(2);
     session.tick(STEP);
     expect(session.hardDrop()).toBe(5);
+    expect(session.score).toBe(10);
     expect(session.phase).toBe("Resolving");
 
     session.tick(STEP);
@@ -60,6 +65,9 @@ describe("GameSession", () => {
     session.tick(STEP);
     expect(session.phase).toBe("Resolving");
     expect(session.chainLevel).toBe(1);
+    expect(session.score).toBe(214);
+    expect(session.clearCount).toBe(1);
+    expect(session.maxChain).toBe(1);
     expect(session.getBoardSnapshot()).toEqual(new Uint8Array(24));
 
     session.tick(STEP);
@@ -109,6 +117,7 @@ describe("GameSession", () => {
     session.setSoftDrop(true);
     session.tick(STEP);
     expect(session.activePiece?.y).toBe(1);
+    expect(session.score).toBe(1);
   });
 
   it("promotes the advertised next piece on the following spawn", () => {
@@ -156,6 +165,7 @@ describe("GameSession", () => {
     session.start(4);
     session.tick(STEP);
     const tickBeforePause = session.simulationTick;
+    const timeBeforePause = session.elapsedMilliseconds;
     const yBeforePause = session.activePiece?.y;
 
     expect(session.pause()).toBe(true);
@@ -163,10 +173,12 @@ describe("GameSession", () => {
     expect(session.hardDrop()).toBe(0);
     session.tick(STEP);
     expect(session.simulationTick).toBe(tickBeforePause);
+    expect(session.elapsedMilliseconds).toBe(timeBeforePause);
     expect(session.activePiece?.y).toBe(yBeforePause);
     expect(session.resume()).toBe(true);
     session.tick(STEP);
     expect(session.simulationTick).toBe(tickBeforePause + 1);
+    expect(session.elapsedMilliseconds).toBe(timeBeforePause + 100);
   });
 
   it("locks on the landing tick when lock delay is zero", () => {
@@ -192,6 +204,15 @@ describe("GameSession", () => {
     session.tick(STEP);
     expect(session.phase).toBe("GameOver");
     expect(session.activePiece).toBeUndefined();
+    const endedAt = session.elapsedMilliseconds;
+    session.tick(STEP);
+    expect(session.elapsedMilliseconds).toBe(endedAt);
+
+    session.start(50);
+    expect(session.score).toBe(0);
+    expect(session.clearCount).toBe(0);
+    expect(session.maxChain).toBe(0);
+    expect(session.elapsedMilliseconds).toBe(0);
   });
 
   it("rejects a variable simulation step", () => {
@@ -219,6 +240,9 @@ describe("GameSession", () => {
     expect(second.phase).toBe(first.phase);
     expect(second.simulationTick).toBe(first.simulationTick);
     expect(second.chainLevel).toBe(first.chainLevel);
+    expect(second.score).toBe(first.score);
+    expect(second.clearCount).toBe(first.clearCount);
+    expect(second.maxChain).toBe(first.maxChain);
     expect(second.activePiece).toEqual(first.activePiece);
     expect(second.nextPiece).toEqual(first.nextPiece);
     expect(second.getBoardSnapshot()).toEqual(first.getBoardSnapshot());

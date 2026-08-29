@@ -69,9 +69,15 @@ export class PieceVisualAnimator {
     if (!Number.isFinite(deltaTimeSeconds) || deltaTimeSeconds < 0) {
       throw new RangeError("Piece animation delta must be a non-negative finite number");
     }
-    if (!Number.isFinite(fallProgress) || fallProgress < 0 || fallProgress > 1) {
-      throw new RangeError("Piece fall progress must be between zero and one");
+    const fallProgressTolerance = 1e-6;
+    if (
+      !Number.isFinite(fallProgress)
+      || fallProgress < -fallProgressTolerance
+      || fallProgress > 1 + fallProgressTolerance
+    ) {
+      throw new RangeError(`Piece fall progress must be between zero and one; got ${fallProgress}`);
     }
+    const clampedFallProgress = Math.max(0, Math.min(1, fallProgress));
 
     if (activePiece !== undefined) {
       this.sandifyingPiece = undefined;
@@ -81,7 +87,7 @@ export class PieceVisualAnimator {
         definition: activePiece.definition,
         rotation: activePiece.rotation,
         x: this.visualX,
-        y: activePiece.y + fallProgress,
+        y: activePiece.y + clampedFallProgress,
         color: activePiece.color,
         opacity: 1,
         mode: "active",

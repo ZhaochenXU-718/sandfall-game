@@ -39,6 +39,9 @@ export class GameSession {
   private currentSeed = 0;
   private currentTick = 0;
   private currentChain = 0;
+  private currentScore = 0;
+  private completedClearCount = 0;
+  private highestChain = 0;
   private fallAccumulatorMs = 0;
   private clearElapsedMs = 0;
   private softDropActive = false;
@@ -74,6 +77,23 @@ export class GameSession {
 
   public get chainLevel(): number {
     return this.currentChain;
+  }
+
+  public get score(): number {
+    return this.currentScore;
+  }
+
+  public get clearCount(): number {
+    return this.completedClearCount;
+  }
+
+  public get maxChain(): number {
+    return this.highestChain;
+  }
+
+  /** Active play time derived from deterministic simulation ticks. */
+  public get elapsedMilliseconds(): number {
+    return this.currentTick * 1000 / this.rules.fixedHz;
   }
 
   public get activePiece(): ActivePieceState | undefined {
@@ -143,6 +163,9 @@ export class GameSession {
     this.currentSeed = seed >>> 0;
     this.currentTick = 0;
     this.currentChain = 0;
+    this.currentScore = 0;
+    this.completedClearCount = 0;
+    this.highestChain = 0;
     this.fallAccumulatorMs = 0;
     this.clearElapsedMs = 0;
     this.softDropActive = false;
@@ -212,6 +235,7 @@ export class GameSession {
       return 0;
     }
     const distance = this.currentPiece.hardDrop();
+    this.currentScore += distance * this.rules.hardDropPointsPerRow;
     this.lockActivePiece();
     return distance;
   }
@@ -332,7 +356,11 @@ export class GameSession {
     this.fallAccumulatorMs += deltaMs;
     while (this.fallAccumulatorMs + 1e-9 >= interval) {
       this.fallAccumulatorMs -= interval;
-      if (!piece.softDrop() || piece.isGrounded) {
+      const moved = piece.softDrop();
+      if (moved && this.softDropActive) {
+        this.currentScore += this.rules.softDropPointsPerRow;
+      }
+      if (!moved || piece.isGrounded) {
         this.fallAccumulatorMs = 0;
         this.stateMachine.transition("LockDelay");
         if (this.rules.lockDelayMs === 0) {
@@ -414,6 +442,12 @@ export class GameSession {
       throw new Error("Clearing state has no valid spanning component");
     }
     this.currentChain += 1;
+    const clearBase = cleared
+      + result.spanningComponentCount * this.rules.spanningComponentBonus;
+    const multiplier = 1 + (this.currentChain - 1) * this.rules.chainMultiplierStep;
+    this.currentScore += Math.round(clearBase * multiplier);
+    this.completedClearCount += result.spanningComponentCount;
+    this.highestChain = Math.max(this.highestChain, this.currentChain);
     this.pendingClear = undefined;
     this.clearElapsedMs = 0;
     this.stableDetector.reset();
@@ -528,6 +562,18 @@ export class GameSession {
     }
     if (!Number.isInteger(rules.maxLockResets) || rules.maxLockResets < 0) {
       throw new RangeError("maxLockResets must be a non-negative integer");
+    }
+    if (!Number.isInteger(rules.hardDropPointsPerRow) || rules.hardDropPointsPerRow < 0) {
+      throw new RangeError("hardDropPointsPerRow must be a non-negative integer");
+    }
+    if (!Number.isInteger(rules.softDropPointsPerRow) || rules.softDropPointsPerRow < 0) {
+      throw new RangeError("softDropPointsPerRow must be a non-negative integer");
+    }
+    if (!Number.isInteger(rules.spanningComponentBonus) || rules.spanningComponentBonus < 0) {
+      throw new RangeError("spanningComponentBonus must be a non-negative integer");
+    }
+    if (!Number.isFinite(rules.chainMultiplierStep) || rules.chainMultiplierStep < 0) {
+      throw new RangeError("chainMultiplierStep must be non-negative");
     }
   }
 }

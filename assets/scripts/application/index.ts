@@ -6,3 +6,5 @@ export { GameStateMachine } from "./GameStateMachine";
 export type { GamePhase } from "./GameStateMachine";
 export { InputAutoRepeat } from "./InputAutoRepeat";
 export type { InputAutoRepeatOptions } from "./InputAutoRepeat";
+export { HIGH_SCORE_STORAGE_KEY, HighScoreStore } from "./HighScoreStore";
+export type { StringStorage } from "./HighScoreStore";
