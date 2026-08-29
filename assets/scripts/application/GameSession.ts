@@ -156,6 +156,11 @@ export class GameSession {
     return this.board.height;
   }
 
+  /** Changes whenever the rendered sand board contents change. */
+  public get boardRevision(): number {
+    return this.board.revision;
+  }
+
   public start(seed = Date.now()): void {
     if (!Number.isFinite(seed)) {
       throw new RangeError("Game seed must be finite");

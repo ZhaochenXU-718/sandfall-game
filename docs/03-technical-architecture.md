@@ -116,7 +116,7 @@ Boot → Menu → Spawning → Falling → LockDelay
 
 ### 7.1 方案
 
-- CPU 维护 `168 × 288` 的颜色网格。
+- CPU 维护 `112 × 192` 的颜色网格。
 - 渲染器维护复用的 `Uint8Array(width * height * 4)` RGBA 缓冲。
 - 根据脏标记写入颜色值。
 - 通过 `Texture2D.uploadData()` 更新一张动态纹理。

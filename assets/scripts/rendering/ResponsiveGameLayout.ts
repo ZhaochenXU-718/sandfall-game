@@ -7,12 +7,21 @@ export interface ResponsiveGameLayoutOptions {
   readonly horizontalMargin?: number;
   readonly hudHeight?: number;
   readonly bottomMargin?: number;
+  readonly safeAreaInsets?: SafeAreaInsets;
+}
+
+export interface SafeAreaInsets {
+  readonly top: number;
+  readonly right: number;
+  readonly bottom: number;
+  readonly left: number;
 }
 
 export interface ResponsiveGameLayout {
   readonly cellSize: number;
   readonly boardWidth: number;
   readonly boardHeight: number;
+  readonly boardX: number;
   readonly boardY: number;
   readonly boardTop: number;
   readonly hudPanelY: number;
@@ -30,6 +39,12 @@ export function fitResponsiveGameLayout(
   const horizontalMargin = options.horizontalMargin ?? 12;
   const hudHeight = options.hudHeight ?? 108;
   const bottomMargin = options.bottomMargin ?? 10;
+  const safeAreaInsets = options.safeAreaInsets ?? {
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+  };
   const positiveValues = [
     options.visibleWidth,
     options.visibleHeight,
@@ -50,13 +65,16 @@ export function fitResponsiveGameLayout(
     || horizontalMargin < 0
     || hudHeight < 0
     || bottomMargin < 0
+    || Object.values(safeAreaInsets).some((value) => !Number.isFinite(value) || value < 0)
   ) {
     throw new RangeError("layout margins must be finite non-negative numbers");
   }
 
-  const widthCellSize = (options.visibleWidth - horizontalMargin * 2) / options.macroWidth;
+  const safeWidth = options.visibleWidth - safeAreaInsets.left - safeAreaInsets.right;
+  const safeHeight = options.visibleHeight - safeAreaInsets.top - safeAreaInsets.bottom;
+  const widthCellSize = (safeWidth - horizontalMargin * 2) / options.macroWidth;
   const heightCellSize = (
-    options.visibleHeight - hudHeight - bottomMargin
+    safeHeight - hudHeight - bottomMargin
   ) / options.macroHeight;
   const cellSize = Math.floor(Math.min(maxCellSize, widthCellSize, heightCellSize));
   if (cellSize <= 0) {
@@ -65,21 +83,25 @@ export function fitResponsiveGameLayout(
 
   const boardWidth = cellSize * options.macroWidth;
   const boardHeight = cellSize * options.macroHeight;
-  const boardBottom = -options.visibleHeight / 2 + bottomMargin;
+  const safeLeft = -options.visibleWidth / 2 + safeAreaInsets.left;
+  const safeRight = options.visibleWidth / 2 - safeAreaInsets.right;
+  const boardX = (safeLeft + safeRight) / 2;
+  const boardBottom = -options.visibleHeight / 2 + safeAreaInsets.bottom + bottomMargin;
   const boardY = boardBottom + boardHeight / 2;
   const boardTop = boardBottom + boardHeight;
-  const hudPanelY = options.visibleHeight / 2 - 58;
+  const hudPanelY = options.visibleHeight / 2 - safeAreaInsets.top - 58;
 
   return Object.freeze({
     cellSize,
     boardWidth,
     boardHeight,
+    boardX,
     boardY,
     boardTop,
     hudPanelY,
     pauseY: hudPanelY + 25,
-    statusX: -boardWidth / 2 + 56,
-    nextX: boardWidth / 2 - 44,
+    statusX: boardX - boardWidth / 2 + 56,
+    nextX: boardX + boardWidth / 2 - 44,
     feedbackY: boardTop - 37,
   });
 }

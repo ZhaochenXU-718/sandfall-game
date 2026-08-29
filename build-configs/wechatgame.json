@@ -1,0 +1,24 @@
+{
+  "taskName": "wechatgame",
+  "name": "sandfall-game",
+  "platform": "wechatgame",
+  "buildPath": "project://build",
+  "outputName": "wechatgame",
+  "debug": false,
+  "md5Cache": false,
+  "mainBundleCompressionType": "merge_dep",
+  "includeModules": [
+    "base",
+    "gfx-webgl",
+    "2d",
+    "ui",
+    "graphics",
+    "audio",
+    "profiler"
+  ],
+  "packages": {
+    "wechatgame": {
+      "appid": "wx80d45d2a90444f56"
+    }
+  }
+}

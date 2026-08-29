@@ -40,6 +40,7 @@ export class SandPixelBuffer {
   public readonly pixels: Uint8Array;
 
   private readonly palette: readonly RgbaColor[];
+  private readonly clearGlowPalette: readonly RgbaColor[];
   private readonly previousCells: Uint8Array;
   private readonly previousGrainVariants: Uint8Array;
   private readonly previousFlashMask: Uint8Array;
@@ -81,6 +82,12 @@ export class SandPixelBuffer {
     this.width = options.width;
     this.height = options.height;
     this.palette = palette;
+    this.clearGlowPalette = palette.map((color) => ({
+      r: clearGlowTargetChannel(color.r),
+      g: clearGlowTargetChannel(color.g),
+      b: clearGlowTargetChannel(color.b),
+      a: color.a,
+    }));
     this.flipY = options.flipY ?? false;
     this.shadeStrength = shadeStrength;
     this.previousCells = new Uint8Array(this.width * this.height);
@@ -131,7 +138,8 @@ export class SandPixelBuffer {
         continue;
       }
       const color = this.palette[colorId];
-      if (color === undefined) {
+      const glowColor = this.clearGlowPalette[colorId];
+      if (color === undefined || glowColor === undefined) {
         throw new RangeError(`Color id ${colorId} has no palette entry`);
       }
 
@@ -143,14 +151,21 @@ export class SandPixelBuffer {
       const shade = colorId === 0
         ? 0
         : grainShade(grainVariant, this.shadeStrength);
-      this.pixels[pixelOffset] = flashChannel(shadeChannel(color.r, shade), flashed, flashIntensity);
+      this.pixels[pixelOffset] = flashChannel(
+        shadeChannel(color.r, shade),
+        glowColor.r,
+        flashed,
+        flashIntensity,
+      );
       this.pixels[pixelOffset + 1] = flashChannel(
         shadeChannel(color.g, shade),
+        glowColor.g,
         flashed,
         flashIntensity,
       );
       this.pixels[pixelOffset + 2] = flashChannel(
         shadeChannel(color.b, shade),
+        glowColor.b,
         flashed,
         flashIntensity,
       );
@@ -207,11 +222,24 @@ function shadeChannel(channel: number, shade: number): number {
   return Math.max(0, Math.min(255, Math.round(value)));
 }
 
-function flashChannel(channel: number, flashed: boolean, intensity: number): number {
-  return flashed ? Math.round(channel + (255 - channel) * intensity) : channel;
+function flashChannel(
+  channel: number,
+  glowTarget: number,
+  flashed: boolean,
+  intensity: number,
+): number {
+  return flashed ? Math.round(channel + (glowTarget - channel) * intensity) : channel;
 }
 
-/** Two smooth white-light pulses over normalized clear-effect progress. */
+/** Screen-blends a palette channel with itself to brighten it without losing hue. */
+export function clearGlowTargetChannel(channel: number): number {
+  if (!Number.isInteger(channel) || channel < 0 || channel > 255) {
+    throw new RangeError("Clear glow channel must be an integer between zero and 255");
+  }
+  return Math.round(255 - ((255 - channel) * (255 - channel)) / 255);
+}
+
+/** Two smooth colored-light pulses over normalized clear-effect progress. */
 export function clearFlashIntensity(progress: number): number {
   if (!Number.isFinite(progress) || progress < 0 || progress > 1) {
     throw new RangeError("Clear flash progress must be between zero and one");

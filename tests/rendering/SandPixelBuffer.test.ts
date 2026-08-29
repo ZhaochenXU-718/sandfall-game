@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   SandPixelBuffer,
   clearFlashIntensity,
+  clearGlowTargetChannel,
 } from "../../assets/scripts/rendering/SandPixelBuffer";
 
 const PALETTE = [
@@ -119,7 +120,7 @@ describe("SandPixelBuffer", () => {
     })).toThrow(RangeError);
   });
 
-  it("flashes only masked grains toward white and restores their texture", () => {
+  it("glows only masked grains in their own hue and restores their texture", () => {
     const buffer = new SandPixelBuffer({
       width: 2,
       height: 1,
@@ -131,7 +132,7 @@ describe("SandPixelBuffer", () => {
     buffer.update(cells);
     buffer.update(cells, mask, 1);
     expect(buffer.pixels).toEqual(Uint8Array.from([
-      255, 255, 255, 255,
+      20, 38, 56, 255,
       10, 20, 30, 255,
     ]));
 
@@ -142,7 +143,15 @@ describe("SandPixelBuffer", () => {
     ]));
   });
 
-  it("produces two white-light peaks across one clear effect", () => {
+  it("brightens palette channels without flattening them to white", () => {
+    expect(clearGlowTargetChannel(255)).toBe(255);
+    expect(clearGlowTargetChannel(107)).toBe(169);
+    expect(clearGlowTargetChannel(78)).toBe(132);
+    expect(clearGlowTargetChannel(0)).toBe(0);
+    expect(() => clearGlowTargetChannel(255.1)).toThrow(RangeError);
+  });
+
+  it("produces two colored-light peaks across one clear effect", () => {
     expect(clearFlashIntensity(0)).toBe(0);
     expect(clearFlashIntensity(0.25)).toBeCloseTo(1);
     expect(clearFlashIntensity(0.5)).toBeCloseTo(0);

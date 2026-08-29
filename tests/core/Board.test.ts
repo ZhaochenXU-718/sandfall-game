@@ -50,4 +50,18 @@ describe("Board", () => {
     board.copyGrainVariantsTo(after);
     expect(after).toEqual(new Uint8Array(2));
   });
+
+  it("increments its revision only for visible mutations", () => {
+    const board = new Board(2, 1, Uint8Array.from([1, 0]));
+    expect(board.revision).toBe(0);
+
+    board.set(0, 0, 1);
+    board.swap(0, 0);
+    expect(board.revision).toBe(0);
+
+    board.swap(0, 1);
+    expect(board.revision).toBe(1);
+    board.clearMarked(Uint8Array.from([0, 1]));
+    expect(board.revision).toBe(2);
+  });
 });

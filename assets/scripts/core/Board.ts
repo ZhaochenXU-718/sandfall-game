@@ -7,6 +7,7 @@ export class Board {
   private readonly cells: Uint8Array;
   private readonly grainVariants: Uint8Array;
   private readonly movedFlags: Uint8Array;
+  private mutationRevision = 0;
 
   public constructor(width: number, height: number, initialCells?: Uint8Array) {
     if (!Number.isInteger(width) || width <= 0) {
@@ -34,6 +35,11 @@ export class Board {
 
   public get size(): number {
     return this.cells.length;
+  }
+
+  /** Monotonic marker used by renderers to skip unchanged board uploads. */
+  public get revision(): number {
+    return this.mutationRevision;
   }
 
   public isInside(x: number, y: number): boolean {
@@ -69,8 +75,12 @@ export class Board {
   public setByIndex(index: number, color: ColorId): void {
     this.assertIndex(index);
     this.assertColor(color);
+    if (this.cells[index] === color) {
+      return;
+    }
     this.cells[index] = color;
     this.grainVariants[index] = color === 0 ? 0 : initialGrainVariant(index, color);
+    this.mutationRevision += 1;
   }
 
   public swap(a: number, b: number): void {
@@ -88,10 +98,14 @@ export class Board {
     ) {
       throw new RangeError("Cell index is outside the board");
     }
+    if (a === b || (valueA === valueB && variantA === variantB)) {
+      return;
+    }
     this.cells[a] = valueB;
     this.cells[b] = valueA;
     this.grainVariants[a] = variantB;
     this.grainVariants[b] = variantA;
+    this.mutationRevision += 1;
   }
 
   public clearMarked(mask: Uint8Array): number {
@@ -106,6 +120,9 @@ export class Board {
         this.grainVariants[index] = 0;
         cleared += 1;
       }
+    }
+    if (cleared > 0) {
+      this.mutationRevision += 1;
     }
     return cleared;
   }

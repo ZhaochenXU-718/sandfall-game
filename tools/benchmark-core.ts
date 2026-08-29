@@ -8,7 +8,20 @@ import {
   SandPixelBuffer,
 } from "../assets/scripts/rendering/SandPixelBuffer";
 
-const { width: WIDTH, height: HEIGHT } = sandBoardSize(DEFAULT_RULES);
+const benchmarkArg = (globalThis as {
+  readonly process?: { readonly argv?: readonly string[] };
+}).process?.argv?.[2];
+const requestedGrainsPerCell = benchmarkArg === undefined
+  ? DEFAULT_RULES.grainsPerCell
+  : Number(benchmarkArg);
+if (!Number.isInteger(requestedGrainsPerCell) || requestedGrainsPerCell <= 0) {
+  throw new RangeError("grainsPerCell benchmark argument must be a positive integer");
+}
+const benchmarkRules = {
+  ...DEFAULT_RULES,
+  grainsPerCell: requestedGrainsPerCell,
+};
+const { width: WIDTH, height: HEIGHT } = sandBoardSize(benchmarkRules);
 const SIZE = WIDTH * HEIGHT;
 
 function averageMilliseconds(iterations: number, operation: () => void): number {
@@ -23,7 +36,7 @@ const randomizer = new Randomizer(0x5a17f411);
 const cells = new Uint8Array(SIZE);
 for (let index = 0; index < cells.length; index += 1) {
   cells[index] = randomizer.nextFloat() < 0.9
-    ? randomizer.nextInt(DEFAULT_RULES.colorCount) + 1
+    ? randomizer.nextInt(benchmarkRules.colorCount) + 1
     : 0;
 }
 
@@ -34,7 +47,7 @@ const sandSubstepMs = averageMilliseconds(1_000, () => {
   simulation.step();
 });
 const sandFixedTickMs = averageMilliseconds(500, () => {
-  for (let substep = 0; substep < DEFAULT_RULES.sandSubsteps; substep += 1) {
+  for (let substep = 0; substep < benchmarkRules.sandSubsteps; substep += 1) {
     simulation.step();
   }
 });
@@ -45,7 +58,7 @@ const connectivityMs = averageMilliseconds(500, () => {
 const firstFrame = cells.slice();
 const secondFrame = cells.slice();
 for (let index = 0; index < secondFrame.length; index += 1) {
-  secondFrame[index] = (secondFrame[index] ?? 0) === DEFAULT_RULES.colorCount
+  secondFrame[index] = (secondFrame[index] ?? 0) === benchmarkRules.colorCount
     ? 1
     : (secondFrame[index] ?? 0) + 1;
 }

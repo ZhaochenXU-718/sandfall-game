@@ -2,10 +2,12 @@ import {
   _decorator,
   Color,
   Component,
+  director,
   EventKeyboard,
   EventTouch,
   game,
   Game,
+  gfx,
   Graphics,
   HorizontalTextAlignment,
   input,
@@ -17,6 +19,7 @@ import {
   ResolutionPolicy,
   Sprite,
   SpriteFrame,
+  sys,
   Texture2D,
   UITransform,
   VerticalTextAlignment,
@@ -35,13 +38,16 @@ import { DEFAULT_RULES, type RulesConfig } from "../core/RulesConfig";
 import { CocosFeedbackController } from "./CocosFeedbackController";
 import { layoutPiecePreview } from "../rendering/PiecePreviewLayout";
 import { PieceVisualAnimator } from "../rendering/PieceVisualAnimator";
-import { fitResponsiveGameLayout } from "../rendering/ResponsiveGameLayout";
-import { sandifyGrainVisible } from "../rendering/SandifyDissolve";
+import {
+  fitResponsiveGameLayout,
+  type SafeAreaInsets,
+} from "../rendering/ResponsiveGameLayout";
 import {
   DEFAULT_SAND_PALETTE,
   DEFAULT_SAND_TEXTURE_STRENGTH,
   SandPixelBuffer,
   clearFlashIntensity,
+  type PixelBufferUpdateResult,
 } from "../rendering/SandPixelBuffer";
 
 const { ccclass, property } = _decorator;
@@ -114,6 +120,7 @@ export class SandfallGameComponent extends Component {
   private clearMaskCells!: Uint8Array;
   private texture: Texture2D | null = null;
   private spriteFrame: SpriteFrame | null = null;
+  private readonly textureUploadRegion = new gfx.BufferTextureCopy();
   private scoreLabel: Label | null = null;
   private scoreFeedbackLabel: Label | null = null;
   private timeLabel: Label | null = null;
@@ -129,7 +136,9 @@ export class SandfallGameComponent extends Component {
   private modalActionLabel: Label | null = null;
   private modalHintLabel: Label | null = null;
   private modalBackdrop: Graphics | null = null;
+  private modalCardNode: Node | null = null;
   private homeScreenNode: Node | null = null;
+  private homeContentNode: Node | null = null;
   private homeBackground: Graphics | null = null;
   private homeHeroNode: Node | null = null;
   private homeStartButtonNode: Node | null = null;
@@ -145,6 +154,9 @@ export class SandfallGameComponent extends Component {
   private scoreFeedbackElapsedSeconds = Number.POSITIVE_INFINITY;
   private scorePulseElapsedSeconds = Number.POSITIVE_INFINITY;
   private scoreFeedbackBaseY = 245;
+  private scoreFeedbackBaseX = 0;
+  private lastRenderedBoardRevision = -1;
+  private lastRenderedClearEffect = false;
   private renderedPreviewKey = "";
   private lastFeedbackPhase: GamePhase = "Idle";
   private lastFeedbackLockSequence = 0;
@@ -176,7 +188,9 @@ export class SandfallGameComponent extends Component {
     this.runner = new FixedStepRunner({
       fixedHz: this.rules.fixedHz,
       maxFrameDeltaSeconds: 0.25,
-      maxStepsPerFrame: 5,
+      // Two steps still preserve 60 Hz simulation on a 30 FPS display while
+      // preventing expensive sand catch-up work from spiraling after a slow frame.
+      maxStepsPerFrame: 2,
     }, (fixedDelta) => this.session.tick(fixedDelta));
     this.pieceAnimator = new PieceVisualAnimator({
       moveDurationSeconds: this.moveAnimationMs / 1000,
@@ -345,6 +359,7 @@ export class SandfallGameComponent extends Component {
     const cardNode = new Node("ModalCard");
     cardNode.layer = overlayNode.layer;
     overlayNode.addChild(cardNode);
+    this.modalCardNode = cardNode;
     cardNode.addComponent(UITransform).setContentSize(286, 300);
     const card = cardNode.addComponent(Graphics);
     card.fillColor = new Color(16, 24, 40, 252);
@@ -380,10 +395,16 @@ export class SandfallGameComponent extends Component {
     this.homeScreenNode = homeNode;
     this.homeBackground = homeNode.addComponent(Graphics);
 
+    const contentNode = new Node("HomeSafeContent");
+    contentNode.layer = homeNode.layer;
+    homeNode.addChild(contentNode);
+    contentNode.addComponent(UITransform).setContentSize(360, 800);
+    this.homeContentNode = contentNode;
+
     const brandNode = new Node("HomeBrand");
-    brandNode.layer = homeNode.layer;
+    brandNode.layer = contentNode.layer;
     brandNode.setPosition(0, 252);
-    homeNode.addChild(brandNode);
+    contentNode.addChild(brandNode);
     brandNode.addComponent(UITransform).setContentSize(310, 104);
     const brandBackground = brandNode.addComponent(Graphics);
     brandBackground.fillColor = new Color(11, 25, 44, 232);
@@ -420,34 +441,34 @@ export class SandfallGameComponent extends Component {
     });
 
     const heroNode = new Node("HomeHero");
-    heroNode.layer = homeNode.layer;
+    heroNode.layer = contentNode.layer;
     heroNode.setPosition(0, this.homeHeroBaseY);
-    homeNode.addChild(heroNode);
+    contentNode.addChild(heroNode);
     heroNode.addComponent(UITransform).setContentSize(220, 190);
     this.homeHeroNode = heroNode;
     const heroGraphics = heroNode.addComponent(Graphics);
     this.drawHomeHero(heroGraphics);
     heroNode.on(Node.EventType.TOUCH_END, this.onHomeHeroTapped, this);
 
-    this.createHomeFeatureTile(homeNode, "RankingEntry", -112, -105, "排行", "即将开放", 0);
-    this.createHomeFeatureTile(homeNode, "AchievementEntry", 0, -105, "成就", "即将开放", 1);
-    this.createHomeFeatureTile(homeNode, "SkinEntry", 112, -105, "皮肤", "即将开放", 2);
+    this.createHomeFeatureTile(contentNode, "RankingEntry", -112, -105, "排行", "即将开放", 0);
+    this.createHomeFeatureTile(contentNode, "AchievementEntry", 0, -105, "成就", "即将开放", 1);
+    this.createHomeFeatureTile(contentNode, "SkinEntry", 112, -105, "皮肤", "即将开放", 2);
 
-    this.homeBestLabel = this.createLabel(homeNode, "HomeBest", 0, -194, 300, 30, 16);
+    this.homeBestLabel = this.createLabel(contentNode, "HomeBest", 0, -194, 300, 30, 16);
     this.homeBestLabel.color = new Color(190, 209, 233, 255);
 
-    const start = this.createButton(homeNode, "HomeStartButton", 0, -263, 252, 64, "▶  开始游戏");
+    const start = this.createButton(contentNode, "HomeStartButton", 0, -263, 252, 64, "▶  开始游戏");
     this.homeStartButtonNode = start.node;
     start.label.fontSize = 21;
     start.label.lineHeight = 27;
     start.node.on(Node.EventType.TOUCH_END, this.onHomeStartButton, this);
 
-    const hint = this.createLabel(homeNode, "HomeHint", 0, -316, 280, 24, 12);
+    const hint = this.createLabel(contentNode, "HomeHint", 0, -316, 280, 24, 12);
     hint.string = "点击主视觉可互动  ·  SPACE / ENTER 开始";
     hint.color = new Color(111, 142, 177, 255);
 
-    this.createHomeFeatureTile(homeNode, "SettingsEntry", -135, 340, "设置", "功能预留", 3, 82, 54);
-    const version = this.createLabel(homeNode, "HomeVersion", 0, -374, 180, 20, 10);
+    this.createHomeFeatureTile(contentNode, "SettingsEntry", -135, 340, "设置", "功能预留", 3, 82, 54);
+    const version = this.createLabel(contentNode, "HomeVersion", 0, -374, 180, 20, 10);
     version.string = "SANDFALL  ·  PROTOTYPE 0.1";
     version.color = new Color(70, 99, 132, 255);
   }
@@ -700,15 +721,17 @@ export class SandfallGameComponent extends Component {
       return;
     }
     const visibleSize = view.getVisibleSize();
+    const safeAreaInsets = this.resolveSafeAreaInsets(visibleSize.width, visibleSize.height);
     const layout = fitResponsiveGameLayout({
       visibleWidth: visibleSize.width,
       visibleHeight: visibleSize.height,
       macroWidth: this.rules.macroWidth,
       macroHeight: this.rules.macroHeight,
+      safeAreaInsets,
     });
 
     const boardNode = this.sandSprite?.node;
-    boardNode?.setPosition(0, layout.boardY);
+    boardNode?.setPosition(layout.boardX, layout.boardY);
     boardNode?.getComponent(UITransform)?.setContentSize(layout.boardWidth, layout.boardHeight);
     if (this.pieceGraphics !== null) {
       this.pieceGraphics.node.setPosition(0, 0);
@@ -719,9 +742,14 @@ export class SandfallGameComponent extends Component {
 
     this.statusPanelNode?.setPosition(layout.statusX, layout.hudPanelY);
     this.nextPanelNode?.setPosition(layout.nextX, layout.hudPanelY);
-    this.pauseButtonNode?.setPosition(0, layout.pauseY);
+    this.pauseButtonNode?.setPosition(layout.boardX, layout.pauseY);
+    this.scoreFeedbackBaseX = layout.boardX;
     this.scoreFeedbackBaseY = layout.feedbackY;
-    this.scoreFeedbackLabel?.node.setPosition(0, layout.feedbackY);
+    this.scoreFeedbackLabel?.node.setPosition(layout.boardX, layout.feedbackY);
+
+    const safeCenterX = (safeAreaInsets.left - safeAreaInsets.right) / 2;
+    const safeCenterY = (safeAreaInsets.bottom - safeAreaInsets.top) / 2;
+    this.modalCardNode?.setPosition(safeCenterX, safeCenterY);
 
     const overlayTransform = this.modalOverlayNode?.getComponent(UITransform);
     overlayTransform?.setContentSize(visibleSize.width, visibleSize.height);
@@ -739,7 +767,31 @@ export class SandfallGameComponent extends Component {
 
     const homeTransform = this.homeScreenNode?.getComponent(UITransform);
     homeTransform?.setContentSize(visibleSize.width, visibleSize.height);
+    const homeSafeWidth = visibleSize.width - safeAreaInsets.left - safeAreaInsets.right;
+    const homeSafeHeight = visibleSize.height - safeAreaInsets.top - safeAreaInsets.bottom;
+    const homeScale = Math.max(0.1, Math.min(1, homeSafeWidth / 360, homeSafeHeight / 800));
+    this.homeContentNode?.setPosition(safeCenterX, safeCenterY);
+    this.homeContentNode?.setScale(homeScale, homeScale, 1);
     this.redrawHomeBackground(visibleSize.width, visibleSize.height);
+  }
+
+  private resolveSafeAreaInsets(visibleWidth: number, visibleHeight: number): SafeAreaInsets {
+    const safeRect = sys.getSafeAreaRect(false);
+    const insets: SafeAreaInsets = {
+      top: Math.max(0, visibleHeight - safeRect.y - safeRect.height),
+      right: Math.max(0, visibleWidth - safeRect.x - safeRect.width),
+      bottom: Math.max(0, safeRect.y),
+      left: Math.max(0, safeRect.x),
+    };
+    const capsuleBottom = miniGameCapsuleBottomInDesignUnits(visibleHeight);
+    if (capsuleBottom === undefined) {
+      return insets;
+    }
+    return {
+      ...insets,
+      // Keep interactive HUD controls below the platform-owned capsule.
+      top: Math.max(insets.top, capsuleBottom + 8),
+    };
   }
 
   private redrawHomeBackground(width: number, height: number): void {
@@ -825,25 +877,81 @@ export class SandfallGameComponent extends Component {
 
   private renderFrame(deltaTime: number, renderAheadSeconds = 0): void {
     this.syncFeedbackState();
-    this.session.copyBoardTo(this.boardCells);
-    this.session.copyGrainVariantsTo(this.grainVariantCells);
-    const hasClearEffect = this.session.copyClearMaskTo(this.clearMaskCells);
-    const flashIntensity = hasClearEffect
-      ? clearFlashIntensity(this.session.getClearProgress(renderAheadSeconds))
-      : 0;
-    const update = this.pixelBuffer.update(
-      this.boardCells,
-      hasClearEffect ? this.clearMaskCells : undefined,
-      flashIntensity,
-      this.grainVariantCells,
-    );
-    if (update.changedCount > 0) {
-      this.texture?.uploadData(this.pixelBuffer.pixels);
+    const boardRevision = this.session.boardRevision;
+    const boardChanged = boardRevision !== this.lastRenderedBoardRevision;
+    if (boardChanged) {
+      this.session.copyBoardTo(this.boardCells);
+      this.session.copyGrainVariantsTo(this.grainVariantCells);
+      this.lastRenderedBoardRevision = boardRevision;
     }
+    const hasClearEffect = this.session.phase === "Clearing"
+      && this.session.copyClearMaskTo(this.clearMaskCells);
+    if (boardChanged || hasClearEffect || this.lastRenderedClearEffect) {
+      const flashIntensity = hasClearEffect
+        ? clearFlashIntensity(this.session.getClearProgress(renderAheadSeconds))
+        : 0;
+      const update = this.pixelBuffer.update(
+        this.boardCells,
+        hasClearEffect ? this.clearMaskCells : undefined,
+        flashIntensity,
+        this.grainVariantCells,
+      );
+      if (update.changedCount > 0) {
+        this.uploadBoardTexture(update);
+      }
+    }
+    this.lastRenderedClearEffect = hasClearEffect;
     this.renderActivePiece(deltaTime, renderAheadSeconds);
     this.renderNextPiece();
     this.renderHudAndModal(deltaTime);
     this.renderHomeScreen(deltaTime);
+  }
+
+  private uploadBoardTexture(update: PixelBufferUpdateResult): void {
+    const texture = this.texture;
+    const gfxTexture = texture?.getGFXTexture();
+    const device = director.root?.device;
+    if (
+      texture === null
+      || gfxTexture === null
+      || gfxTexture === undefined
+      || device === undefined
+      || update.dirtyMinX < 0
+      || update.dirtyMinY < 0
+    ) {
+      texture?.uploadData(this.pixelBuffer.pixels);
+      return;
+    }
+
+    const dirtyWidth = update.dirtyMaxX - update.dirtyMinX + 1;
+    const dirtyHeight = update.dirtyMaxY - update.dirtyMinY + 1;
+    const dirtyArea = dirtyWidth * dirtyHeight;
+    const fullArea = this.pixelBuffer.width * this.pixelBuffer.height;
+    if (dirtyArea >= fullArea * 0.7) {
+      texture.uploadData(this.pixelBuffer.pixels);
+      return;
+    }
+
+    const region = this.textureUploadRegion;
+    region.buffOffset = (
+      update.dirtyMinY * this.pixelBuffer.width + update.dirtyMinX
+    ) * 4;
+    region.buffStride = this.pixelBuffer.width;
+    region.buffTexHeight = this.pixelBuffer.height;
+    region.texOffset.x = update.dirtyMinX;
+    region.texOffset.y = update.dirtyMinY;
+    region.texOffset.z = 0;
+    region.texExtent.width = dirtyWidth;
+    region.texExtent.height = dirtyHeight;
+    region.texExtent.depth = 1;
+    region.texSubres.mipLevel = 0;
+    region.texSubres.baseArrayLayer = 0;
+    region.texSubres.layerCount = 1;
+    device.copyBuffersToTexture(
+      [this.pixelBuffer.pixels],
+      gfxTexture,
+      [region],
+    );
   }
 
   private renderHudAndModal(deltaTime: number): void {
@@ -997,7 +1105,10 @@ export class SandfallGameComponent extends Component {
       const progress = Math.min(1, this.scoreFeedbackElapsedSeconds / duration);
       const fade = progress < 0.58 ? 1 : (1 - progress) / 0.42;
       const scale = 0.82 + 0.2 * Math.min(1, progress / 0.16);
-      feedback.node.setPosition(0, this.scoreFeedbackBaseY + progress * 34);
+      feedback.node.setPosition(
+        this.scoreFeedbackBaseX,
+        this.scoreFeedbackBaseY + progress * 34,
+      );
       feedback.node.setScale(scale, scale, 1);
       feedback.color = new Color(255, 222, 102, Math.round(255 * fade));
       if (progress >= 1) {
@@ -1107,28 +1218,27 @@ export class SandfallGameComponent extends Component {
     const cellInset = Math.max(0.75, Math.min(cellWidth, cellHeight) * 0.045);
     const cornerRadius = Math.max(2, Math.min(cellWidth, cellHeight) * 0.1);
     if (piece.mode === "sandifying") {
-      const scale = this.rules.grainsPerCell;
-      const grainWidth = cellWidth / scale;
-      const grainHeight = cellHeight / scale;
-      graphics.fillColor = new Color(color.r, color.g, color.b, color.a);
+      // The locked grains already live in the board texture underneath. Fade
+      // only the four solid macro cells to reveal them, avoiding hundreds of
+      // per-frame Graphics paths on mini-game runtimes.
+      const dissolveInset = Math.min(cellWidth, cellHeight) * (1 - piece.opacity) * 0.08;
+      graphics.fillColor = new Color(
+        color.r,
+        color.g,
+        color.b,
+        Math.round(color.a * piece.opacity),
+      );
       for (const cell of rotation) {
-        const macroX = Math.round(piece.x + cell.x);
-        const macroY = Math.round(piece.y + cell.y);
-        for (let grainY = 0; grainY < scale; grainY += 1) {
-          for (let grainX = 0; grainX < scale; grainX += 1) {
-            const boardGrainX = macroX * scale + grainX;
-            const boardGrainY = macroY * scale + grainY;
-            if (!sandifyGrainVisible(boardGrainX, boardGrainY, piece.opacity)) {
-              continue;
-            }
-            graphics.rect(
-              left + boardGrainX * grainWidth,
-              top - (boardGrainY + 1) * grainHeight,
-              grainWidth + 0.05,
-              grainHeight + 0.05,
-            );
-          }
-        }
+        const macroX = piece.x + cell.x;
+        const macroY = piece.y + cell.y;
+        const inset = cellInset + dissolveInset;
+        graphics.roundRect(
+          left + macroX * cellWidth + inset,
+          top - (macroY + 1) * cellHeight + inset,
+          cellWidth - inset * 2,
+          cellHeight - inset * 2,
+          cornerRadius,
+        );
       }
       graphics.fill();
       return;
@@ -1518,4 +1628,62 @@ export class SandfallGameComponent extends Component {
     }
     this.feedback?.pause();
   }
+}
+
+interface MiniGameRuntimeApi {
+  readonly getMenuButtonBoundingClientRect?: () => unknown;
+  readonly getMenuButtonLayout?: () => unknown;
+  readonly getWindowInfo?: () => unknown;
+  readonly getSystemInfoSync?: () => unknown;
+}
+
+/** Returns the platform capsule's bottom edge measured from the design-space top. */
+function miniGameCapsuleBottomInDesignUnits(visibleHeight: number): number | undefined {
+  const runtimes = globalThis as unknown as {
+    readonly wx?: MiniGameRuntimeApi;
+    readonly tt?: MiniGameRuntimeApi;
+  };
+  for (const runtime of [runtimes.wx, runtimes.tt]) {
+    if (runtime === undefined) {
+      continue;
+    }
+    const menu = callMiniGameApi(
+      runtime,
+      runtime.getMenuButtonBoundingClientRect ?? runtime.getMenuButtonLayout,
+    );
+    const system = callMiniGameApi(runtime, runtime.getWindowInfo)
+      ?? callMiniGameApi(runtime, runtime.getSystemInfoSync);
+    const bottom = finiteRecordNumber(menu, "bottom");
+    const windowHeight = finiteRecordNumber(system, "windowHeight")
+      ?? finiteRecordNumber(system, "screenHeight");
+    if (bottom !== undefined && windowHeight !== undefined && windowHeight > 0) {
+      return Math.max(0, Math.min(visibleHeight, bottom / windowHeight * visibleHeight));
+    }
+  }
+  return undefined;
+}
+
+function callMiniGameApi(
+  runtime: MiniGameRuntimeApi,
+  method: (() => unknown) | undefined,
+): Readonly<Record<string, unknown>> | undefined {
+  if (method === undefined) {
+    return undefined;
+  }
+  try {
+    const result = method.call(runtime);
+    return typeof result === "object" && result !== null
+      ? result as Readonly<Record<string, unknown>>
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function finiteRecordNumber(
+  record: Readonly<Record<string, unknown>> | undefined,
+  key: string,
+): number | undefined {
+  const value = record?.[key];
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }

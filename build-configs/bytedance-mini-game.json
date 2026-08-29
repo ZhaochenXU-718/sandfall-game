@@ -1,0 +1,24 @@
+{
+  "taskName": "bytedance-mini-game",
+  "name": "sandfall-game",
+  "platform": "bytedance-mini-game",
+  "buildPath": "project://build",
+  "outputName": "bytedance-mini-game",
+  "debug": false,
+  "md5Cache": false,
+  "mainBundleCompressionType": "merge_dep",
+  "includeModules": [
+    "base",
+    "gfx-webgl",
+    "2d",
+    "ui",
+    "graphics",
+    "audio",
+    "profiler"
+  ],
+  "packages": {
+    "bytedance-mini-game": {
+      "appid": "tt59de2f63c7a5fea202"
+    }
+  }
+}

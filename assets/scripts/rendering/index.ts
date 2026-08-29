@@ -3,6 +3,7 @@ export {
   DEFAULT_SAND_TEXTURE_STRENGTH,
   SandPixelBuffer,
   clearFlashIntensity,
+  clearGlowTargetChannel,
 } from "./SandPixelBuffer";
 export { PieceVisualAnimator } from "./PieceVisualAnimator";
 export { layoutPiecePreview } from "./PiecePreviewLayout";
