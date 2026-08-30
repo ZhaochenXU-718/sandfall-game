@@ -4,7 +4,7 @@
 
 ## 当前状态
 
-项目已实现可独立测试的 TypeScript 核心回合，并提供固定步长驱动、单纹理 RGBA 渲染缓冲和 Cocos Creator 3.8.8 可玩 Web 原型。当前试玩版包含开始界面、触屏手势、下一块预告、计分与存活时间、暂停、Game Over 结算、重开、Web 本地最高分，以及 BGM、操作/消除音效和平台震动反馈。
+项目已实现可独立测试的 TypeScript 核心回合，并提供固定步长驱动、单纹理 RGBA 渲染缓冲和 Cocos Creator 3.8.8 可玩 Web 原型。当前试玩版包含正式美术首页、进阶与经典休闲模式、触屏手势、下一块预告、计分与存活时间、暂停、Game Over 结算、重开、Web 本地最高分，以及 BGM、操作/消除音效和平台震动反馈。
 
 ## 核心层开发
 
@@ -50,6 +50,7 @@ Cocos 原型的场景接入步骤见 [`docs/cocos-prototype-setup.md`](docs/coco
 9. [数据与运营设计](docs/09-data-and-analytics.md)
 10. [排行榜公平性备忘](docs/10-ranking-fairness.md)
 11. [macOS 开发环境迁移指南](docs/11-macos-migration.md)
+12. [美术资源制作与实装清单](docs/12-art-asset-production-list.md)
 
 ## MVP 范围
 

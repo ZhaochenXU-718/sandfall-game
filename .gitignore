@@ -11,6 +11,8 @@ node_modules/
 coverage/
 dist/
 *.log
+__pycache__/
+*.py[cod]
 
 # Editors and operating systems
 .DS_Store
@@ -22,4 +24,3 @@ dist/
 .env.*
 !.env.example
 project.private.config.json
-

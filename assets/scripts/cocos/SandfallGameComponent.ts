@@ -17,6 +17,7 @@ import {
   Node,
   profiler,
   ResolutionPolicy,
+  resources,
   Sprite,
   SpriteFrame,
   sys,
@@ -58,6 +59,17 @@ const { ccclass, property } = _decorator;
 const CLASSIC_MIN_COLOR_COUNT = 2;
 const CLASSIC_MAX_COLOR_COUNT = 5;
 const CLASSIC_FALL_INTERVALS_MS = [900, 750, 600, 500, 400, 300] as const;
+
+interface HomeGrainParticle {
+  readonly x: number;
+  readonly y: number;
+  readonly size: number;
+  readonly colorIndex: number;
+  readonly phase: number;
+  readonly speed: number;
+  readonly amplitude: number;
+  readonly drifting: boolean;
+}
 
 /** Minimal Cocos Creator 3.8.8 prototype host for the deterministic game core. */
 @ccclass("SandfallGameComponent")
@@ -148,16 +160,24 @@ export class SandfallGameComponent extends Component {
   private homeScreenNode: Node | null = null;
   private homeContentNode: Node | null = null;
   private homeBackground: Graphics | null = null;
+  private homeBackgroundSprite: Sprite | null = null;
+  private homeLogoSprite: Sprite | null = null;
   private homeHeroNode: Node | null = null;
+  private homeHeroSprite: Sprite | null = null;
+  private homeGrainFieldNode: Node | null = null;
+  private homeGrainGraphics: Graphics | null = null;
+  private readonly homeGrainParticles: HomeGrainParticle[] = [];
   private homeStartButtonNode: Node | null = null;
   private homeStartButtonLabel: Label | null = null;
   private homeBestLabel: Label | null = null;
   private homeProgressiveModeGraphics: Graphics | null = null;
   private homeClassicModeGraphics: Graphics | null = null;
+  private homeProgressiveModeSprite: Sprite | null = null;
+  private homeClassicModeSprite: Sprite | null = null;
   private homeProgressiveDetailsNode: Node | null = null;
   private homeClassicControlsNode: Node | null = null;
-  private homeClassicColorLabel: Label | null = null;
-  private homeClassicSpeedLabel: Label | null = null;
+  private homeClassicColorValueLabel: Label | null = null;
+  private homeClassicSpeedValueLabel: Label | null = null;
   private selectedGameMode: GameMode = "progressive";
   private classicColorCount = DEFAULT_RULES.colorCount;
   private classicSpeedIndex = 2;
@@ -422,6 +442,13 @@ export class SandfallGameComponent extends Component {
     this.homeScreenNode = homeNode;
     this.homeBackground = homeNode.addComponent(Graphics);
 
+    const backgroundSpriteNode = new Node("HomeBackgroundArt");
+    backgroundSpriteNode.layer = homeNode.layer;
+    homeNode.addChild(backgroundSpriteNode);
+    backgroundSpriteNode.addComponent(UITransform).setContentSize(450, 800);
+    this.homeBackgroundSprite = backgroundSpriteNode.addComponent(Sprite);
+    this.homeBackgroundSprite.sizeMode = Sprite.SizeMode.CUSTOM;
+
     const contentNode = new Node("HomeSafeContent");
     contentNode.layer = homeNode.layer;
     homeNode.addChild(contentNode);
@@ -430,51 +457,30 @@ export class SandfallGameComponent extends Component {
 
     const brandNode = new Node("HomeBrand");
     brandNode.layer = contentNode.layer;
-    brandNode.setPosition(0, 252);
+    brandNode.setPosition(0, 258);
     contentNode.addChild(brandNode);
-    brandNode.addComponent(UITransform).setContentSize(310, 104);
-    const brandBackground = brandNode.addComponent(Graphics);
-    brandBackground.fillColor = new Color(11, 25, 44, 232);
-    brandBackground.roundRect(-155, -52, 310, 104, 20);
-    brandBackground.fill();
-    brandBackground.strokeColor = new Color(72, 115, 163, 200);
-    brandBackground.lineWidth = 2;
-    brandBackground.roundRect(-154, -51, 308, 102, 19);
-    brandBackground.stroke();
+    brandNode.addComponent(UITransform).setContentSize(280, 134);
+    this.homeLogoSprite = brandNode.addComponent(Sprite);
+    this.homeLogoSprite.sizeMode = Sprite.SizeMode.CUSTOM;
 
-    const title = this.createLabel(brandNode, "HomeTitle", 0, 12, 286, 52, 36);
-    title.string = "SANDFALL";
-    title.color = new Color(244, 249, 255, 255);
-    const tagline = this.createLabel(brandNode, "HomeTagline", 0, -29, 270, 26, 14);
-    tagline.string = "让颜色贯穿沙海";
-    tagline.color = new Color(150, 196, 230, 255);
-
-    const brandAccentNode = new Node("BrandAccent");
-    brandAccentNode.layer = brandNode.layer;
-    brandAccentNode.setPosition(0, -48);
-    brandNode.addChild(brandAccentNode);
-    brandAccentNode.addComponent(UITransform).setContentSize(144, 5);
-    const brandAccent = brandAccentNode.addComponent(Graphics);
-    const accentColors = [
-      new Color(65, 205, 195, 255),
-      new Color(81, 133, 226, 255),
-      new Color(255, 99, 107, 255),
-      new Color(255, 196, 75, 255),
-    ];
-    accentColors.forEach((color, index) => {
-      brandAccent.fillColor = color;
-      brandAccent.roundRect(-70 + index * 36, 0, 32, 4, 2);
-      brandAccent.fill();
-    });
+    const grainFieldNode = new Node("HomeHeroGrainField");
+    grainFieldNode.layer = contentNode.layer;
+    grainFieldNode.setPosition(0, this.homeHeroBaseY);
+    contentNode.addChild(grainFieldNode);
+    grainFieldNode.addComponent(UITransform).setContentSize(300, 250);
+    this.homeGrainFieldNode = grainFieldNode;
+    this.homeGrainGraphics = grainFieldNode.addComponent(Graphics);
+    this.createHomeGrainParticles();
+    this.drawHomeGrainField();
 
     const heroNode = new Node("HomeHero");
     heroNode.layer = contentNode.layer;
     heroNode.setPosition(0, this.homeHeroBaseY);
     contentNode.addChild(heroNode);
-    heroNode.addComponent(UITransform).setContentSize(220, 190);
+    heroNode.addComponent(UITransform).setContentSize(224, 196);
     this.homeHeroNode = heroNode;
-    const heroGraphics = heroNode.addComponent(Graphics);
-    this.drawHomeHero(heroGraphics);
+    this.homeHeroSprite = heroNode.addComponent(Sprite);
+    this.homeHeroSprite.sizeMode = Sprite.SizeMode.CUSTOM;
     heroNode.on(Node.EventType.TOUCH_END, this.onHomeHeroTapped, this);
 
     this.homeProgressiveModeGraphics = this.createHomeModeButton(
@@ -498,7 +504,7 @@ export class SandfallGameComponent extends Component {
     this.homeBestLabel = this.createLabel(contentNode, "HomeBest", 0, -253, 300, 30, 15);
     this.homeBestLabel.color = new Color(190, 209, 233, 255);
 
-    const start = this.createButton(contentNode, "HomeStartButton", 0, -306, 252, 58, "▶  开始进阶模式");
+    const start = this.createHomeStartButton(contentNode);
     this.homeStartButtonNode = start.node;
     this.homeStartButtonLabel = start.label;
     start.label.fontSize = 21;
@@ -513,6 +519,7 @@ export class SandfallGameComponent extends Component {
     version.string = "SANDFALL  ·  PROTOTYPE 0.1";
     version.color = new Color(70, 99, 132, 255);
     this.refreshHomeModeControls();
+    this.loadHomeArtAssets();
   }
 
   private createHomeModeButton(
@@ -527,16 +534,131 @@ export class SandfallGameComponent extends Component {
     node.layer = parent.layer;
     node.setPosition(x, -105);
     parent.addChild(node);
-    node.addComponent(UITransform).setContentSize(150, 64);
+    node.addComponent(UITransform).setContentSize(150, 72);
     const graphics = node.addComponent(Graphics);
-    const title = this.createLabel(node, `${name}Title`, 0, 10, 140, 25, 16);
+
+    const iconNode = new Node(`${name}Icon`);
+    iconNode.layer = node.layer;
+    iconNode.setPosition(-47, 0);
+    node.addChild(iconNode);
+    iconNode.addComponent(UITransform).setContentSize(50, 50);
+    const icon = iconNode.addComponent(Sprite);
+    icon.sizeMode = Sprite.SizeMode.CUSTOM;
+    if (name === "ProgressiveMode") {
+      this.homeProgressiveModeSprite = icon;
+    } else {
+      this.homeClassicModeSprite = icon;
+    }
+
+    const title = this.createLabel(node, `${name}Title`, 25, 10, 92, 25, 15);
     title.string = titleText;
     title.color = new Color(239, 247, 255, 255);
-    const subtitle = this.createLabel(node, `${name}Subtitle`, 0, -14, 140, 20, 10);
+    const subtitle = this.createLabel(node, `${name}Subtitle`, 25, -14, 94, 20, 9);
     subtitle.string = subtitleText;
     subtitle.color = new Color(143, 169, 202, 255);
     node.on(Node.EventType.TOUCH_END, handler, this);
     return graphics;
+  }
+
+  private loadHomeArtAssets(): void {
+    this.loadHomeSpriteFrame("art/home/home-background", this.homeBackgroundSprite);
+    this.loadHomeSpriteFrame("art/home/home-logo", this.homeLogoSprite);
+    this.loadHomeSpriteFrame("art/home/home-hero", this.homeHeroSprite);
+    this.loadHomeSpriteFrame("art/mode-icons/mode-progressive", this.homeProgressiveModeSprite);
+    this.loadHomeSpriteFrame("art/mode-icons/mode-classic", this.homeClassicModeSprite);
+  }
+
+  private loadHomeSpriteFrame(path: string, sprite: Sprite | null): void {
+    if (sprite === null) {
+      return;
+    }
+    resources.load(`${path}/spriteFrame`, SpriteFrame, (error, frame) => {
+      if (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.warn(`[Sandfall] Failed to load home art: ${path} · ${message}`);
+        return;
+      }
+      sprite.spriteFrame = frame;
+    });
+  }
+
+  private createHomeGrainParticles(): void {
+    this.homeGrainParticles.length = 0;
+    const noise = (index: number, salt: number): number => {
+      const value = Math.sin((index + 1) * 12.9898 + salt * 78.233) * 43758.5453;
+      return value - Math.floor(value);
+    };
+
+    // A persistent uneven halo keeps the reference screen's dense suspended-sand
+    // atmosphere without creating one Cocos node per grain.
+    for (let index = 0; index < 42; index += 1) {
+      const angle = index * 2.399963 + (noise(index, 1) - 0.5) * 0.5;
+      const radiusX = 92 + noise(index, 2) * 46;
+      const radiusY = 64 + noise(index, 3) * 42;
+      this.homeGrainParticles.push({
+        x: Math.cos(angle) * radiusX,
+        y: Math.sin(angle) * radiusY,
+        size: 1.8 + noise(index, 4) * 3.1,
+        colorIndex: 1 + Math.floor(noise(index, 5) * 4),
+        phase: noise(index, 6) * Math.PI * 2,
+        speed: 0.45 + noise(index, 7) * 0.65,
+        amplitude: 1.5 + noise(index, 8) * 4.5,
+        drifting: false,
+      });
+    }
+
+    for (let index = 0; index < 12; index += 1) {
+      const seedIndex = index + 64;
+      this.homeGrainParticles.push({
+        x: -132 + noise(seedIndex, 1) * 264,
+        y: -112 + noise(seedIndex, 2) * 224,
+        size: 2.1 + noise(seedIndex, 3) * 3.4,
+        colorIndex: 1 + Math.floor(noise(seedIndex, 4) * 4),
+        phase: noise(seedIndex, 5) * Math.PI * 2,
+        speed: 0.55 + noise(seedIndex, 6) * 0.7,
+        amplitude: 4 + noise(seedIndex, 7) * 8,
+        drifting: true,
+      });
+    }
+  }
+
+  private drawHomeGrainField(): void {
+    const graphics = this.homeGrainGraphics;
+    if (graphics === null) {
+      return;
+    }
+    graphics.clear();
+    for (let colorIndex = 1; colorIndex <= 4; colorIndex += 1) {
+      const color = DEFAULT_SAND_PALETTE[colorIndex];
+      if (color === undefined) {
+        continue;
+      }
+      graphics.fillColor = new Color(color.r, color.g, color.b, 218);
+      for (const grain of this.homeGrainParticles) {
+        if (grain.colorIndex !== colorIndex) {
+          continue;
+        }
+        const time = this.homeAnimationSeconds;
+        const motion = time * grain.speed + grain.phase;
+        let x: number;
+        let y: number;
+        if (grain.drifting) {
+          const progress = (time * grain.speed * 0.065 + grain.phase / (Math.PI * 2)) % 1;
+          x = grain.x + Math.sin(motion * 1.7) * grain.amplitude;
+          y = 112 - progress * 224;
+        } else {
+          x = grain.x + Math.sin(motion) * grain.amplitude;
+          y = grain.y + Math.cos(motion * 0.83) * grain.amplitude * 0.7;
+        }
+        const burst = this.homeHeroImpulse;
+        x += Math.sign(x || 1) * burst * (grain.drifting ? 11 : 7);
+        y += burst * (grain.drifting ? 8 : 4);
+        const twinkle = 0.9 + Math.sin(motion * 1.35) * 0.1;
+        const size = grain.size * twinkle * (1 + burst * 0.18);
+        graphics.roundRect(x - size / 2, y - size / 2, size, size, Math.min(1, size * 0.22));
+      }
+      graphics.fill();
+    }
   }
 
   private createHomeDifficultyPanel(parent: Node): void {
@@ -547,12 +669,17 @@ export class SandfallGameComponent extends Component {
     panelNode.addComponent(UITransform).setContentSize(310, 88);
     const panel = panelNode.addComponent(Graphics);
     panel.fillColor = new Color(9, 23, 40, 238);
-    panel.roundRect(-155, -44, 310, 88, 14);
+    this.tracePixelChamferRect(panel, -155, -44, 310, 88, 10);
     panel.fill();
-    panel.strokeColor = new Color(54, 91, 128, 210);
-    panel.lineWidth = 1.5;
-    panel.roundRect(-154, -43, 308, 86, 13);
+    panel.strokeColor = new Color(62, 97, 139, 230);
+    panel.lineWidth = 2;
+    this.tracePixelChamferRect(panel, -154, -43, 308, 86, 9);
     panel.stroke();
+    panel.strokeColor = new Color(25, 55, 88, 230);
+    panel.lineWidth = 1;
+    this.tracePixelChamferRect(panel, -150, -39, 300, 78, 7);
+    panel.stroke();
+    this.drawPixelCornerGrains(panel, -155, -44, 310, 88, new Color(60, 207, 210, 255));
 
     const progressiveDetails = new Node("ProgressiveDetails");
     progressiveDetails.layer = panelNode.layer;
@@ -578,30 +705,54 @@ export class SandfallGameComponent extends Component {
     classicControls.addComponent(UITransform).setContentSize(300, 80);
     this.homeClassicControlsNode = classicControls;
 
-    this.homeClassicColorLabel = this.createLabel(
+    const colorCaption = this.createLabel(
       classicControls,
-      "ClassicColorLabel",
-      -55,
+      "ClassicColorCaption",
+      -96,
       20,
-      170,
+      82,
       26,
       13,
     );
-    this.homeClassicColorLabel.horizontalAlign = HorizontalTextAlignment.LEFT;
-    this.homeClassicColorLabel.color = new Color(207, 224, 243, 255);
+    colorCaption.string = "颜色数量";
+    colorCaption.horizontalAlign = HorizontalTextAlignment.LEFT;
+    colorCaption.color = new Color(80, 205, 203, 255);
+    this.homeClassicColorValueLabel = this.createLabel(
+      classicControls,
+      "ClassicColorValue",
+      -8,
+      20,
+      92,
+      26,
+      15,
+    );
+    this.homeClassicColorValueLabel.horizontalAlign = HorizontalTextAlignment.LEFT;
+    this.homeClassicColorValueLabel.color = new Color(239, 247, 255, 255);
     this.createClassicAdjustButtons(classicControls, 20, this.onClassicColorDecrease, this.onClassicColorIncrease);
 
-    this.homeClassicSpeedLabel = this.createLabel(
+    const speedCaption = this.createLabel(
       classicControls,
-      "ClassicSpeedLabel",
-      -55,
+      "ClassicSpeedCaption",
+      -96,
       -20,
-      170,
+      82,
       26,
       13,
     );
-    this.homeClassicSpeedLabel.horizontalAlign = HorizontalTextAlignment.LEFT;
-    this.homeClassicSpeedLabel.color = new Color(207, 224, 243, 255);
+    speedCaption.string = "下落速度";
+    speedCaption.horizontalAlign = HorizontalTextAlignment.LEFT;
+    speedCaption.color = new Color(80, 205, 203, 255);
+    this.homeClassicSpeedValueLabel = this.createLabel(
+      classicControls,
+      "ClassicSpeedValue",
+      -8,
+      -20,
+      92,
+      26,
+      14,
+    );
+    this.homeClassicSpeedValueLabel.horizontalAlign = HorizontalTextAlignment.LEFT;
+    this.homeClassicSpeedValueLabel.color = new Color(239, 247, 255, 255);
     this.createClassicAdjustButtons(classicControls, -20, this.onClassicSpeedDecrease, this.onClassicSpeedIncrease);
   }
 
@@ -611,10 +762,10 @@ export class SandfallGameComponent extends Component {
     decrease: () => void,
     increase: () => void,
   ): void {
-    const minus = this.createButton(parent, `Decrease${y}`, 83, y, 42, 30, "−");
+    const minus = this.createPixelAdjustButton(parent, `Decrease${y}`, 74, y, "−");
     minus.label.fontSize = 18;
     minus.node.on(Node.EventType.TOUCH_END, decrease, this);
-    const plus = this.createButton(parent, `Increase${y}`, 132, y, 42, 30, "+");
+    const plus = this.createPixelAdjustButton(parent, `Increase${y}`, 121, y, "+");
     plus.label.fontSize = 18;
     plus.node.on(Node.EventType.TOUCH_END, increase, this);
   }
@@ -636,12 +787,12 @@ export class SandfallGameComponent extends Component {
     if (this.homeClassicControlsNode !== null) {
       this.homeClassicControlsNode.active = this.selectedGameMode === "classic";
     }
-    if (this.homeClassicColorLabel !== null) {
-      this.homeClassicColorLabel.string = `颜色数量  ${this.classicColorCount}`;
+    if (this.homeClassicColorValueLabel !== null) {
+      this.homeClassicColorValueLabel.string = `${this.classicColorCount}`;
     }
-    if (this.homeClassicSpeedLabel !== null) {
+    if (this.homeClassicSpeedValueLabel !== null) {
       const interval = CLASSIC_FALL_INTERVALS_MS[this.classicSpeedIndex];
-      this.homeClassicSpeedLabel.string = `下落速度  ${this.classicSpeedIndex + 1}/6  ·  ${interval}ms`;
+      this.homeClassicSpeedValueLabel.string = `${this.classicSpeedIndex + 1}/6 · ${interval}ms`;
     }
     if (this.homeStartButtonLabel !== null) {
       this.homeStartButtonLabel.string = this.selectedGameMode === "progressive"
@@ -660,21 +811,65 @@ export class SandfallGameComponent extends Component {
     }
     graphics.clear();
     graphics.fillColor = selected
-      ? new Color(accent.r, accent.g, accent.b, 56)
+      ? new Color(accent.r, accent.g, accent.b, 48)
       : new Color(10, 25, 43, 238);
-    graphics.roundRect(-75, -32, 150, 64, 13);
+    this.tracePixelChamferRect(graphics, -75, -36, 150, 72, 9);
     graphics.fill();
     graphics.strokeColor = selected
       ? accent
-      : new Color(55, 83, 115, 220);
-    graphics.lineWidth = selected ? 2.5 : 1.25;
-    graphics.roundRect(-74, -31, 148, 62, 12);
+      : new Color(accent.r, accent.g, accent.b, 145);
+    graphics.lineWidth = selected ? 2.5 : 1.5;
+    this.tracePixelChamferRect(graphics, -74, -35, 148, 70, 8);
     graphics.stroke();
-    if (selected) {
-      graphics.fillColor = accent;
-      graphics.roundRect(-59, 27, 118, 3, 1.5);
-      graphics.fill();
-    }
+    graphics.strokeColor = selected
+      ? new Color(255, 240, 190, 185)
+      : new Color(35, 67, 102, 180);
+    graphics.lineWidth = 1;
+    this.tracePixelChamferRect(graphics, -70, -31, 140, 62, 6);
+    graphics.stroke();
+    this.drawPixelCornerGrains(graphics, -75, -36, 150, 72, accent, selected ? 255 : 150);
+  }
+
+  private tracePixelChamferRect(
+    graphics: Graphics,
+    left: number,
+    bottom: number,
+    width: number,
+    height: number,
+    cut: number,
+  ): void {
+    graphics.moveTo(left + cut, bottom);
+    graphics.lineTo(left + width - cut, bottom);
+    graphics.lineTo(left + width, bottom + cut);
+    graphics.lineTo(left + width, bottom + height - cut);
+    graphics.lineTo(left + width - cut, bottom + height);
+    graphics.lineTo(left + cut, bottom + height);
+    graphics.lineTo(left, bottom + height - cut);
+    graphics.lineTo(left, bottom + cut);
+    graphics.close();
+  }
+
+  private drawPixelCornerGrains(
+    graphics: Graphics,
+    left: number,
+    bottom: number,
+    width: number,
+    height: number,
+    accent: Color,
+    alpha = 210,
+  ): void {
+    const right = left + width;
+    const top = bottom + height;
+    graphics.fillColor = new Color(accent.r, accent.g, accent.b, alpha);
+    graphics.rect(left + 8, top - 12, 4, 4);
+    graphics.rect(left + 13, top - 18, 3, 3);
+    graphics.rect(right - 12, bottom + 8, 4, 4);
+    graphics.rect(right - 17, bottom + 13, 3, 3);
+    graphics.fill();
+    graphics.fillColor = new Color(69, 126, 214, Math.min(alpha, 190));
+    graphics.rect(left + 8, bottom + 9, 3, 3);
+    graphics.rect(right - 12, top - 13, 3, 3);
+    graphics.fill();
   }
 
   private onProgressiveModeSelected(): void {
@@ -819,86 +1014,6 @@ export class SandfallGameComponent extends Component {
     subtitle.color = new Color(105, 134, 168, 255);
   }
 
-  private drawHomeHero(graphics: Graphics): void {
-    graphics.clear();
-    graphics.fillColor = new Color(0, 0, 0, 76);
-    graphics.ellipse(-86, -78, 182, 28);
-    graphics.fill();
-
-    const cubes = [
-      { x: -70, y: -28, color: 1 },
-      { x: -22, y: -28, color: 2 },
-      { x: 26, y: -28, color: 3 },
-      { x: -22, y: 20, color: 4 },
-    ];
-    for (const cube of cubes) {
-      const color = DEFAULT_SAND_PALETTE[cube.color];
-      if (color !== undefined) {
-        this.drawHomeCube(graphics, cube.x, cube.y, 43, color);
-      }
-    }
-
-    const grains = [
-      { x: -50, y: -61, size: 7, color: 1 },
-      { x: 12, y: -68, size: 5, color: 2 },
-      { x: 48, y: -57, size: 8, color: 3 },
-      { x: -3, y: -83, size: 5, color: 4 },
-    ];
-    for (const grain of grains) {
-      const color = DEFAULT_SAND_PALETTE[grain.color];
-      if (color === undefined) continue;
-      graphics.fillColor = new Color(color.r, color.g, color.b, 230);
-      graphics.roundRect(grain.x, grain.y, grain.size, grain.size, 1.5);
-      graphics.fill();
-    }
-  }
-
-  private drawHomeCube(
-    graphics: Graphics,
-    x: number,
-    y: number,
-    size: number,
-    color: { readonly r: number; readonly g: number; readonly b: number; readonly a: number },
-  ): void {
-    const depth = 9;
-    graphics.fillColor = new Color(
-      Math.min(255, color.r + 34),
-      Math.min(255, color.g + 34),
-      Math.min(255, color.b + 34),
-      255,
-    );
-    graphics.moveTo(x, y + size);
-    graphics.lineTo(x + depth, y + size + depth);
-    graphics.lineTo(x + size + depth, y + size + depth);
-    graphics.lineTo(x + size, y + size);
-    graphics.close();
-    graphics.fill();
-
-    graphics.fillColor = new Color(
-      Math.max(0, color.r - 45),
-      Math.max(0, color.g - 45),
-      Math.max(0, color.b - 45),
-      255,
-    );
-    graphics.moveTo(x + size, y);
-    graphics.lineTo(x + size + depth, y + depth);
-    graphics.lineTo(x + size + depth, y + size + depth);
-    graphics.lineTo(x + size, y + size);
-    graphics.close();
-    graphics.fill();
-
-    graphics.fillColor = new Color(color.r, color.g, color.b, color.a);
-    graphics.roundRect(x, y, size, size, 6);
-    graphics.fill();
-    graphics.fillColor = new Color(255, 255, 255, 66);
-    graphics.roundRect(x + 6, y + size - 10, size - 12, 4, 2);
-    graphics.fill();
-    graphics.fillColor = new Color(255, 255, 255, 40);
-    graphics.circle(x + 10, y + 11, 2.4);
-    graphics.circle(x + 20, y + 17, 1.7);
-    graphics.fill();
-  }
-
   private createLabel(
     parent: Node,
     name: string,
@@ -919,6 +1034,123 @@ export class SandfallGameComponent extends Component {
     label.horizontalAlign = HorizontalTextAlignment.CENTER;
     label.verticalAlign = VerticalTextAlignment.CENTER;
     return label;
+  }
+
+  private createPixelAdjustButton(
+    parent: Node,
+    name: string,
+    x: number,
+    y: number,
+    text: string,
+  ): { readonly node: Node; readonly label: Label } {
+    const width = 42;
+    const height = 30;
+    const buttonNode = new Node(name);
+    buttonNode.layer = parent.layer;
+    buttonNode.setPosition(x, y);
+    parent.addChild(buttonNode);
+    buttonNode.addComponent(UITransform).setContentSize(width, height);
+    const background = buttonNode.addComponent(Graphics);
+
+    background.fillColor = new Color(30, 70, 126, 255);
+    this.tracePixelChamferRect(background, -width / 2, -height / 2, width, height, 5);
+    background.fill();
+    background.strokeColor = new Color(88, 151, 237, 255);
+    background.lineWidth = 2;
+    this.tracePixelChamferRect(background, -width / 2 + 1, -height / 2 + 1, width - 2, height - 2, 4);
+    background.stroke();
+    background.strokeColor = new Color(147, 196, 255, 120);
+    background.lineWidth = 1;
+    this.tracePixelChamferRect(background, -width / 2 + 4, -height / 2 + 4, width - 8, height - 8, 2);
+    background.stroke();
+    background.fillColor = new Color(116, 191, 255, 230);
+    background.rect(-width / 2 + 6, height / 2 - 7, 4, 2);
+    background.rect(width / 2 - 8, -height / 2 + 5, 3, 3);
+    background.fill();
+
+    const label = this.createLabel(buttonNode, `${name}Label`, 0, 0, width - 8, height - 4, 18);
+    label.string = text;
+    label.color = new Color(244, 250, 255, 255);
+    return { node: buttonNode, label };
+  }
+
+  private createHomeStartButton(parent: Node): { readonly node: Node; readonly label: Label } {
+    const width = 266;
+    const height = 60;
+    const buttonNode = new Node("HomeStartButton");
+    buttonNode.layer = parent.layer;
+    buttonNode.setPosition(0, -306);
+    parent.addChild(buttonNode);
+    buttonNode.addComponent(UITransform).setContentSize(width, height);
+    const background = buttonNode.addComponent(Graphics);
+
+    // Dark gold outer body and two stepped outlines create the chunky pixel frame.
+    background.fillColor = new Color(105, 63, 0, 255);
+    this.tracePixelChamferRect(background, -width / 2, -height / 2, width, height, 10);
+    background.fill();
+    background.strokeColor = new Color(255, 220, 69, 255);
+    background.lineWidth = 3;
+    this.tracePixelChamferRect(background, -width / 2 + 1.5, -height / 2 + 1.5, width - 3, height - 3, 9);
+    background.stroke();
+
+    background.fillColor = new Color(247, 172, 14, 255);
+    this.tracePixelChamferRect(background, -width / 2 + 6, -height / 2 + 6, width - 12, height - 12, 6);
+    background.fill();
+    background.strokeColor = new Color(255, 235, 112, 255);
+    background.lineWidth = 1.5;
+    this.tracePixelChamferRect(background, -width / 2 + 8, -height / 2 + 8, width - 16, height - 16, 5);
+    background.stroke();
+
+    // A few broad tonal bands keep the gold from reading as a flat UI rectangle.
+    background.fillColor = new Color(255, 210, 46, 90);
+    background.rect(-width / 2 + 13, 8, width - 26, 12);
+    background.fill();
+    background.fillColor = new Color(177, 102, 0, 58);
+    background.rect(-width / 2 + 13, -21, width - 26, 9);
+    background.fill();
+
+    const sandColors = [
+      new Color(255, 232, 121, 190),
+      new Color(255, 202, 36, 220),
+      new Color(209, 124, 0, 175),
+      new Color(255, 246, 185, 170),
+    ];
+    const noise = (index: number, salt: number): number => {
+      const value = Math.sin((index + 1) * 17.213 + salt * 43.117) * 19341.177;
+      return value - Math.floor(value);
+    };
+    for (let colorIndex = 0; colorIndex < sandColors.length; colorIndex += 1) {
+      const sandColor = sandColors[colorIndex];
+      if (sandColor === undefined) {
+        continue;
+      }
+      background.fillColor = sandColor;
+      for (let index = colorIndex; index < 108; index += sandColors.length) {
+        const x = -width / 2 + 14 + noise(index, 1) * (width - 28);
+        const y = -height / 2 + 12 + noise(index, 2) * (height - 24);
+        const size = 1 + Math.floor(noise(index, 3) * 2.6);
+        background.rect(Math.round(x), Math.round(y), size, size);
+      }
+      background.fill();
+    }
+
+    // Pixel chips at the corners echo the reference button's crumbling sand edges.
+    background.fillColor = new Color(58, 40, 5, 225);
+    background.rect(-width / 2 + 13, height / 2 - 16, 5, 5);
+    background.rect(-width / 2 + 19, height / 2 - 12, 3, 3);
+    background.rect(width / 2 - 18, height / 2 - 16, 5, 5);
+    background.rect(width / 2 - 22, height / 2 - 11, 3, 3);
+    background.fill();
+    background.fillColor = new Color(255, 246, 174, 255);
+    background.rect(-width / 2 + 11, -height / 2 + 10, 4, 4);
+    background.rect(width / 2 - 15, -height / 2 + 10, 4, 4);
+    background.fill();
+
+    const label = this.createLabel(buttonNode, "HomeStartButtonLabel", 0, 0, width - 28, height - 8, 22);
+    label.string = "▶  开始进阶模式";
+    label.lineHeight = 28;
+    label.color = new Color(48, 34, 4, 255);
+    return { node: buttonNode, label };
   }
 
   private createButton(
@@ -1101,6 +1333,7 @@ export class SandfallGameComponent extends Component {
   }
 
   private redrawHomeBackground(width: number, height: number): void {
+    this.resizeHomeBackgroundSprite(width, height);
     const graphics = this.homeBackground;
     if (graphics === null) {
       return;
@@ -1148,6 +1381,18 @@ export class SandfallGameComponent extends Component {
       graphics.close();
       graphics.fill();
     });
+  }
+
+  private resizeHomeBackgroundSprite(width: number, height: number): void {
+    const sprite = this.homeBackgroundSprite;
+    if (sprite === null) {
+      return;
+    }
+    const imageAspect = 720 / 1280;
+    const viewportAspect = width / height;
+    const spriteWidth = viewportAspect >= imageAspect ? width : height * imageAspect;
+    const spriteHeight = viewportAspect >= imageAspect ? width / imageAspect : height;
+    sprite.node.getComponent(UITransform)?.setContentSize(spriteWidth, spriteHeight);
   }
 
   private onViewResized(): void {
@@ -1367,18 +1612,24 @@ export class SandfallGameComponent extends Component {
     const step = Math.min(0.05, Math.max(0, deltaTime));
     this.homeAnimationSeconds += step;
     this.homeHeroImpulse = Math.max(0, this.homeHeroImpulse - step * 1.8);
+    const bob = Math.sin(this.homeAnimationSeconds * 1.9) * 7;
+    const idleSway = Math.sin(this.homeAnimationSeconds * 1.25) * 3.2;
+    const impulseLift = Math.sin(this.homeHeroImpulse * Math.PI) * 14;
     const hero = this.homeHeroNode;
     if (hero !== null) {
-      const bob = Math.sin(this.homeAnimationSeconds * 1.9) * 7;
-      const idleSway = Math.sin(this.homeAnimationSeconds * 1.25) * 3.2;
       const impulseSway = Math.sin(this.homeAnimationSeconds * 18) * 13 * this.homeHeroImpulse;
-      const impulseLift = Math.sin(this.homeHeroImpulse * Math.PI) * 14;
       const scale = 1
         + Math.sin(this.homeAnimationSeconds * 2.2) * 0.018
         + this.homeHeroImpulse * 0.045;
       hero.setPosition(0, this.homeHeroBaseY + bob + impulseLift);
       hero.angle = idleSway + impulseSway;
       hero.setScale(scale, scale, 1);
+    }
+    const grains = this.homeGrainFieldNode;
+    if (grains !== null) {
+      grains.setPosition(0, this.homeHeroBaseY + bob * 0.62 + impulseLift * 0.35);
+      grains.angle = idleSway * 0.22;
+      this.drawHomeGrainField();
     }
     if (this.homeStartButtonNode !== null) {
       const pulse = 1 + Math.sin(this.homeAnimationSeconds * 2.6) * 0.014;
