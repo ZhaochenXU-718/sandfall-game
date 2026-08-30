@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 286 300" width="286" height="300" shape-rendering="crispEdges">
+    <title>SANDFALL GAME OVER MODAL DECORATION</title>
+    <defs>
+      <mask id="frame-gaps">
+        <rect width="286" height="300" fill="white"/>
+        <rect x="104" y="0" width="24" height="5" fill="black"/><rect x="158" y="0" width="24" height="5" fill="black"/>
+        <rect x="0" y="82" width="5" height="14" fill="black"/><rect x="0" y="151" width="5" height="14" fill="black"/><rect x="0" y="218" width="5" height="14" fill="black"/>
+        <rect x="281" y="82" width="5" height="14" fill="black"/><rect x="281" y="151" width="5" height="14" fill="black"/><rect x="281" y="218" width="5" height="14" fill="black"/>
+        <rect x="99" y="295" width="28" height="5" fill="black"/><rect x="159" y="295" width="28" height="5" fill="black"/>
+      </mask>
+    </defs>
+    <path d="M14 2H272H278V8H284V286V292H278V298H14H8V292H2V14V8H8V2Z" fill="none" stroke="#4E7398" stroke-width="2" mask="url(#frame-gaps)"/>
+    <path d="M14 2H74M212 2H272M2 14V67M284 14V67" fill="none" stroke="#FF636B" stroke-width="2"/>
+    <path d="M14 298H70M216 298H272M2 246V286M284 246V286" fill="none" stroke="#A83F4D" stroke-width="2"/>
+    <path d="M17 7H58M228 7H269M17 293H51M235 293H269" fill="none" stroke="#5B8DEF" stroke-width="1" opacity="0.8"/>
+    <rect x="4" y="103" width="2" height="45" fill="#375373"/><rect x="280" y="103" width="2" height="45" fill="#375373"/>
+    <rect x="4" y="170" width="2" height="37" fill="#375373"/><rect x="280" y="170" width="2" height="37" fill="#375373"/>
+    <rect x="137" y="6" width="12" height="3" fill="#FF636B"/><rect x="140" y="12" width="6" height="4" fill="#FF636B"/><rect x="141" y="19" width="4" height="4" fill="#A83F4D"/>
+    <rect x="8" y="17" width="3" height="3" fill="#FF636B" opacity="0.92"/><rect x="275" y="17" width="3" height="3" fill="#FF636B" opacity="0.92"/><rect x="14" y="11" width="2" height="2" fill="#5B8DEF" opacity="0.92"/><rect x="270" y="11" width="2" height="2" fill="#5B8DEF" opacity="0.92"/><rect x="15" y="24" width="2" height="2" fill="#FF636B" opacity="0.92"/><rect x="269" y="24" width="2" height="2" fill="#FF636B" opacity="0.92"/><rect x="11" y="31" width="2" height="2" fill="#5B8DEF" opacity="0.92"/><rect x="273" y="31" width="2" height="2" fill="#5B8DEF" opacity="0.92"/><rect x="23" y="15" width="1" height="1" fill="#FF636B" opacity="0.92"/><rect x="262" y="15" width="1" height="1" fill="#FF636B" opacity="0.92"/><rect x="14" y="27" width="2" height="2" fill="#4E7398" opacity="0.55"/><rect x="270" y="27" width="2" height="2" fill="#4E7398" opacity="0.55"/><rect x="6" y="268" width="2" height="2" fill="#5B8DEF" opacity="0.92"/><rect x="278" y="268" width="2" height="2" fill="#5B8DEF" opacity="0.92"/><rect x="12" y="276" width="3" height="3" fill="#FF636B" opacity="0.92"/><rect x="271" y="276" width="3" height="3" fill="#FF636B" opacity="0.92"/><rect x="18" y="284" width="2" height="2" fill="#FF636B" opacity="0.92"/><rect x="266" y="284" width="2" height="2" fill="#FF636B" opacity="0.92"/><rect x="15" y="272" width="2" height="2" fill="#4E7398" opacity="0.55"/><rect x="269" y="272" width="2" height="2" fill="#4E7398" opacity="0.55"/><rect x="27" y="288" width="1" height="1" fill="#5B8DEF" opacity="0.92"/><rect x="258" y="288" width="1" height="1" fill="#5B8DEF" opacity="0.92"/><rect x="10" y="280" width="2" height="2" fill="#FF636B" opacity="0.92"/><rect x="274" y="280" width="2" height="2" fill="#FF636B" opacity="0.92"/>
+    <rect x="8" y="48" width="2" height="2" fill="#A83F4D" opacity="0.72"/><rect x="11" y="59" width="3" height="3" fill="#FF636B" opacity="0.94"/><rect x="14" y="72" width="2" height="2" fill="#FF636B" opacity="0.72"/><rect x="276" y="51" width="2" height="2" fill="#A83F4D" opacity="0.94"/><rect x="272" y="64" width="3" height="3" fill="#FF636B" opacity="0.72"/><rect x="8" y="246" width="2" height="2" fill="#FF636B" opacity="0.94"/><rect x="11" y="258" width="3" height="3" fill="#A83F4D" opacity="0.72"/><rect x="276" y="249" width="2" height="2" fill="#FF636B" opacity="0.94"/><rect x="272" y="262" width="3" height="3" fill="#FF636B" opacity="0.72"/>
+  </svg>

@@ -103,34 +103,44 @@ distribution/art/              # 平台图标、分享图、宣传图，不进�
   - 替换背景、Logo、Hero 和模式图标。
   - 保留现有响应式安全区和 Hero 动画逻辑。
   - 已将五张正式运行时图片接入 `assets/resources/art/`，保留安全区缩放、Hero 漂浮/点击反馈，并以单个 `Graphics` 批量实现 `42 + 12` 颗常驻与漂移彩砂；模式卡、难度区、调节按钮与金砂开始按钮统一为双层切角像素组件。Cocos Creator 3.8.8 Web Mobile 构建和 `390×844` 浏览器预览通过，进阶/经典模式切换正常。
-- [ ] `ART-B09` 首页微信/抖音真机验收
+- [x] `ART-B09` 首页微信/抖音真机验收
   - 检查刘海、胶囊、裁切、清晰度、启动速度和包体变化。
+  - `2026-08-30` 验收通过：微信 AppID `wx80d45d2a90444f56`，构建目录由 `2,595,252` 增至 `3,922,884` 字节（约 `3.74 MiB`）；抖音 AppID `tt59de2f63c7a5fea202`，构建目录由 `2,569,596` 增至 `3,897,228` 字节（约 `3.72 MiB`）。两端均包含 5 张首页正式资源，微信 `2×` 渲染倍率模板仍生效；微信与抖音扫码真机确认刘海/胶囊避让、裁切、清晰度、启动速度和首页交互无阻断问题。
 
 批次退出条件：首页已形成正式品牌观感，两个平台真机显示一致且不影响启动性能。
 
 ## 5. 批次 C：游戏内 UI
 
-- [ ] `ART-C01` 功能图标统一规范（`C`）
+- [x] `ART-C01` 功能图标统一规范（`C`）
   - 暂停、继续、首页、重开、帮助、音乐、音效、震动、分享。
   - 统一视口、线宽、圆角和高亮状态。
-- [ ] `ART-C02` HUD 面板视觉规范（`G+`）
+  - 已按首页霓虹像素方向返工并输出 [功能图标规范板](../art-source/concepts/art-c01-function-icon-system.png)、[24 px 小尺寸检查](../art-source/concepts/art-c01-function-icon-24px-check.png)与[矢量/状态/接入规范](../art-source/briefs/ART-C01-function-icon-system.md)；共 `9` 个基础语义图标、`3` 个设置关闭态，统一为 `64×64` 视口、`4 px` 像素模数、直角阶梯轮廓和可由 Cocos 着色的白色透明蒙版。
+- [x] `ART-C02` HUD 面板视觉规范（`G+`）
   - SCORE/TIME、NEXT、暂停按钮和危险提示的材质参考。
   - 最终面板优先继续使用 Cocos `Graphics` 或九宫格实现。
-- [ ] `ART-C03` 按钮状态规范（`C`）
+  - 已输出 [ImageGen 材质候选](../art-source/concepts/art-c02-hud-material-imagegen-reference.png)、[精确 HUD 规范板](../art-source/concepts/art-c02-hud-panel-system.png)与[尺寸/排版/Cocos 实现规范](../art-source/briefs/ART-C02-hud-panel-system.md)；保持现有 `112×98 / 88×98 / 48×38` 组件尺寸，静态面板使用蓝灰切角边和少量青蓝角标，危险提示收束为棋盘顶边 `280×12` 阶梯导轨，不新增运行时图片。
+- [x] `ART-C03` 按钮状态规范（`C`）
   - 默认、按下、选中、禁用四种状态。
-- [ ] `ART-C04` 暂停弹窗装饰（`G+`）
+  - 已根据视觉复核返工并输出 [四态规范板](../art-source/concepts/art-c03-button-state-system.png)、[1× 运行尺寸检查](../art-source/concepts/art-c03-button-state-1x-check.png)与[几何/像素材质/触摸状态流规范](../art-source/briefs/ART-C03-button-state-system.md)；按钮统一两级阶梯切角、分段边框、边缘方粒与固定颗粒坐标，按下态只移动视觉子节点 `2` 设计点且保持命中区域固定，选中态增加延长导线与 `4×4` 方标，禁用态取消交互反馈。
+- [x] `ART-C04` 暂停弹窗装饰（`G+`）
   - 不包含最终文字和按钮，保证信息区干净。
-- [ ] `ART-C05` Game Over 弹窗装饰（`G+`）
+  - 已输出 [ImageGen 材质候选](../art-source/concepts/art-c04-pause-modal-imagegen-reference.png)、[共同弹窗规范板](../art-source/concepts/art-c04-c05-modal-decoration-system.png)、[透明运行候选](../art-source/exports/modal/luosha-modal-decoration-pause-286x300.png)与[安全区/接入规范](../art-source/briefs/ART-C04-pause-modal-decoration.md)；装饰限制在 `286×300` 外沿约 `18 px`，中央标题、数据、按钮与提示区完全透明。
+- [x] `ART-C05` Game Over 弹窗装饰（`G+`）
   - 与暂停弹窗共用结构，增加失败氛围但不遮挡数据。
-- [ ] `ART-C06` 等级提升徽记/光环（`G+`）
+  - 已输出 [同结构 ImageGen 候选](../art-source/concepts/art-c05-game-over-modal-imagegen-reference.png)、[透明运行候选](../art-source/exports/modal/luosha-modal-decoration-game-over-286x300.png)与[共同结构/失败态规范](../art-source/briefs/ART-C05-game-over-modal-decoration.md)；与 C04 共用视口、安全区、断点和基础颗粒坐标，只增加受控危险红与少量外沿坠落方粒。
+- [x] `ART-C06` 等级提升徽记/光环（`G+`）
   - 文字仍由 Cocos 动态渲染。
-- [ ] `ART-C07` 连锁反馈徽记/光环（`G+`）
+  - 已输出 [ImageGen 能量方向候选](../art-source/concepts/art-c06-level-up-halo-imagegen-reference.png)、[C06/C07 共同规范板](../art-source/concepts/art-c06-c07-feedback-halo-system.png)、[等级提升透明运行候选](../art-source/exports/feedback/luosha-feedback-level-up-280x96.png)与[安全区/接入规范](../art-source/briefs/ART-C06-level-up-feedback-halo.md)；使用 `280×96` 开放式金色冠光和上升方粒，中央动态文字区完全透明。
+- [x] `ART-C07` 连锁反馈徽记/光环（`G+`）
   - 支持不同连锁层数复用，不制作固定数字图片。
-- [ ] `ART-C08` UI 资源 Cocos 实装（`C`）
+  - 已输出 [横向能量候选](../art-source/concepts/art-c07-chain-halo-imagegen-reference.png)、[可着色白色 alpha 蒙版](../art-source/exports/feedback/luosha-feedback-chain-mask-280x96.png)与[层级复用规范](../art-source/briefs/ART-C07-chain-feedback-halo.md)；与 C06 共用 `280×96` 视口和文字安全区，建议由 Cocos 按 `×2 / ×3 / ×4+` 分别着色为金、珊瑚红和紫红。
+- [x] `ART-C08` UI 资源 Cocos 实装（`C`）
   - 接入图标、弹窗装饰和反馈资源。
   - 所有点击区域仍由现有 UI 节点控制，不以图片透明区决定触控范围。
-- [ ] `ART-C09` 游戏内 UI 微信/抖音真机验收
+  - 已完成 [Cocos 实装与资源同步规范](../art-source/briefs/ART-C08-ui-cocos-integration.md)：运行资源统一进入 `assets/resources/art/ui/`，HUD 改为阶梯切角 `Graphics`，按钮使用固定命中区与下移 `2` 点的视觉子节点，暂停/Game Over 共用弹窗装饰 Sprite，等级/连锁光环复用现有 `1.05 s` 动态反馈时间轴；构建与 `117` 个自动测试通过。
+- [x] `ART-C09` 游戏内 UI 微信/抖音真机验收
   - 检查小尺寸识别、文字对比度、安全区和低亮度表现。
+  - 2026-08-30 已完成 [C09 三端构建与真机验收](../art-source/briefs/ART-C09-device-build-validation.md)：Cocos Creator 3.8.8 的 Web Mobile、微信与抖音构建均成功；两个小游戏产物的入口、AppID、`2×` 微信模板和 16 张新 UI 运行资源已核对。用户确认微信/抖音扫码真机视觉验证完成，批次 C 关闭。
 
 批次退出条件：HUD、按钮和弹窗风格统一，游戏信息可读性不低于当前代码绘制版本。
 
@@ -215,4 +225,4 @@ distribution/art/              # 平台图标、分享图、宣传图，不进�
 
 ## 11. 下一步
 
-`ART-B08` 已完成：背景、Logo、彩沙 Hero、两枚 2D 模式图标和 `54` 颗批量动态悬浮沙粒已经接入 Cocos 首页，Web Mobile 构建及手机尺寸预览通过。下一项为 `ART-B09`：分别构建微信与抖音小游戏并完成扫码真机验收。
+批次 C 已完成：C01～C08 的霓虹像素游戏内 UI 规范、运行资源与 Cocos 实装均已落地，C09 的 Web Mobile、微信与抖音构建及真机验收通过。下一项为批次 D 的 `ART-D01` 左右拖动教学图。

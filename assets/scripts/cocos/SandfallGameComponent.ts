@@ -71,6 +71,21 @@ interface HomeGrainParticle {
   readonly drifting: boolean;
 }
 
+type UiButtonState = "default" | "pressed" | "selected" | "disabled";
+
+interface UiButtonVisual {
+  readonly node: Node;
+  readonly visualNode: Node;
+  readonly background: Graphics;
+  readonly label: Label;
+  readonly width: number;
+  readonly height: number;
+  readonly cut: number;
+  readonly accentDefault: boolean;
+  icon: Sprite | null;
+  baseState: Exclude<UiButtonState, "pressed">;
+}
+
 /** Minimal Cocos Creator 3.8.8 prototype host for the deterministic game core. */
 @ccclass("SandfallGameComponent")
 export class SandfallGameComponent extends Component {
@@ -142,21 +157,35 @@ export class SandfallGameComponent extends Component {
   private readonly textureUploadRegion = new gfx.BufferTextureCopy();
   private scoreLabel: Label | null = null;
   private scoreFeedbackLabel: Label | null = null;
+  private scoreFeedbackDecorationSprite: Sprite | null = null;
+  private scoreFeedbackLevelFrame: SpriteFrame | null = null;
+  private scoreFeedbackChainFrame: SpriteFrame | null = null;
+  private scoreFeedbackChainLevel = 0;
   private timeLabel: Label | null = null;
   private chainLabel: Label | null = null;
   private statusPanelNode: Node | null = null;
   private nextPanelNode: Node | null = null;
   private pauseButtonNode: Node | null = null;
   private pauseButtonLabel: Label | null = null;
+  private pauseButtonVisual: UiButtonVisual | null = null;
+  private pauseIconFrame: SpriteFrame | null = null;
+  private resumeIconFrame: SpriteFrame | null = null;
+  private restartIconFrame: SpriteFrame | null = null;
+  private homeIconFrame: SpriteFrame | null = null;
   private modalOverlayNode: Node | null = null;
   private modalTitleLabel: Label | null = null;
   private modalSummaryLabel: Label | null = null;
   private modalActionNode: Node | null = null;
   private modalActionLabel: Label | null = null;
+  private modalActionVisual: UiButtonVisual | null = null;
   private modalHomeNode: Node | null = null;
+  private modalHomeVisual: UiButtonVisual | null = null;
   private modalHintLabel: Label | null = null;
   private modalBackdrop: Graphics | null = null;
   private modalCardNode: Node | null = null;
+  private modalDecorationSprite: Sprite | null = null;
+  private modalPauseDecorationFrame: SpriteFrame | null = null;
+  private modalGameOverDecorationFrame: SpriteFrame | null = null;
   private homeScreenNode: Node | null = null;
   private homeContentNode: Node | null = null;
   private homeBackground: Graphics | null = null;
@@ -205,6 +234,7 @@ export class SandfallGameComponent extends Component {
   private lastFeedbackPhase: GamePhase = "Idle";
   private lastFeedbackLockSequence = 0;
   private readonly pressedKeys = new Set<KeyCode>();
+  private gameplayUiAssetsRequested = false;
 
   protected onLoad(): void {
     profiler.hideStats();
@@ -297,6 +327,7 @@ export class SandfallGameComponent extends Component {
     if (this.homeScreenNode === null) {
       this.createHomeScreen();
     }
+    this.loadGameplayUiAssets();
   }
 
   private createNextPiecePanel(): void {
@@ -308,13 +339,7 @@ export class SandfallGameComponent extends Component {
     panelNode.addComponent(UITransform).setContentSize(88, 98);
 
     const panel = panelNode.addComponent(Graphics);
-    panel.fillColor = new Color(12, 18, 31, 232);
-    panel.roundRect(-44, -49, 88, 98, 10);
-    panel.fill();
-    panel.strokeColor = new Color(78, 99, 132, 255);
-    panel.lineWidth = 2;
-    panel.roundRect(-43, -48, 86, 96, 9);
-    panel.stroke();
+    this.drawHudPanel(panel, 88, 98, new Color(91, 141, 239, 255));
 
     const labelNode = new Node("NextLabel");
     labelNode.layer = panelNode.layer;
@@ -346,13 +371,7 @@ export class SandfallGameComponent extends Component {
     panelNode.addComponent(UITransform).setContentSize(112, 98);
 
     const panel = panelNode.addComponent(Graphics);
-    panel.fillColor = new Color(12, 18, 31, 232);
-    panel.roundRect(-56, -49, 112, 98, 10);
-    panel.fill();
-    panel.strokeColor = new Color(78, 99, 132, 255);
-    panel.lineWidth = 2;
-    panel.roundRect(-55, -48, 110, 96, 9);
-    panel.stroke();
+    this.drawHudPanel(panel, 112, 98, new Color(65, 205, 195, 255));
 
     this.scoreLabel = this.createLabel(panelNode, "ScoreLabel", 0, 23, 100, 32, 14);
     this.scoreLabel.horizontalAlign = HorizontalTextAlignment.LEFT;
@@ -368,6 +387,15 @@ export class SandfallGameComponent extends Component {
     this.chainLabel.string = "";
     this.chainLabel.color = new Color(255, 209, 92, 255);
 
+    const feedbackDecorationNode = new Node("ScoreFeedbackDecoration");
+    feedbackDecorationNode.layer = this.node.layer;
+    feedbackDecorationNode.setPosition(0, 245);
+    this.node.addChild(feedbackDecorationNode);
+    feedbackDecorationNode.addComponent(UITransform).setContentSize(280, 96);
+    this.scoreFeedbackDecorationSprite = feedbackDecorationNode.addComponent(Sprite);
+    this.scoreFeedbackDecorationSprite.sizeMode = Sprite.SizeMode.CUSTOM;
+    feedbackDecorationNode.active = false;
+
     this.scoreFeedbackLabel = this.createLabel(
       this.node,
       "ScoreFeedback",
@@ -380,9 +408,11 @@ export class SandfallGameComponent extends Component {
     this.scoreFeedbackLabel.color = new Color(255, 222, 102, 255);
     this.scoreFeedbackLabel.node.active = false;
 
-    const pauseButton = this.createButton(this.node, "PauseButton", 0, 367, 48, 38, "Ⅱ");
+    const pauseButton = this.createButton(this.node, "PauseButton", 0, 367, 48, 38, "Ⅱ", true);
     this.pauseButtonNode = pauseButton.node;
     this.pauseButtonLabel = pauseButton.label;
+    this.pauseButtonVisual = pauseButton;
+    this.createButtonIcon(pauseButton, "PauseButtonIcon", 24, 0);
     pauseButton.node.on(Node.EventType.TOUCH_END, this.onPauseButton, this);
   }
 
@@ -405,12 +435,18 @@ export class SandfallGameComponent extends Component {
     cardNode.addComponent(UITransform).setContentSize(286, 300);
     const card = cardNode.addComponent(Graphics);
     card.fillColor = new Color(16, 24, 40, 252);
-    card.roundRect(-143, -150, 286, 300, 18);
+    this.tracePixelSteppedRect(card, -143, -150, 286, 300, 12);
     card.fill();
-    card.strokeColor = new Color(94, 121, 164, 255);
-    card.lineWidth = 2;
-    card.roundRect(-142, -149, 284, 298, 17);
-    card.stroke();
+    card.fillColor = new Color(9, 23, 40, 138);
+    this.tracePixelSteppedRect(card, -137, -144, 274, 288, 8);
+    card.fill();
+
+    const decorationNode = new Node("ModalDecorationSprite");
+    decorationNode.layer = cardNode.layer;
+    cardNode.addChild(decorationNode);
+    decorationNode.addComponent(UITransform).setContentSize(286, 300);
+    this.modalDecorationSprite = decorationNode.addComponent(Sprite);
+    this.modalDecorationSprite.sizeMode = Sprite.SizeMode.CUSTOM;
 
     this.modalTitleLabel = this.createLabel(cardNode, "ModalTitle", 0, 100, 250, 42, 27);
     this.modalTitleLabel.color = new Color(246, 249, 255, 255);
@@ -421,10 +457,14 @@ export class SandfallGameComponent extends Component {
     const action = this.createButton(cardNode, "ModalAction", 0, -67, 112, 48, "PLAY AGAIN");
     this.modalActionNode = action.node;
     this.modalActionLabel = action.label;
+    this.modalActionVisual = action;
+    this.createButtonIcon(action, "ModalActionIcon", 22, -42);
     action.node.on(Node.EventType.TOUCH_END, this.onModalAction, this);
 
     const home = this.createButton(cardNode, "ModalHome", 72, -67, 96, 48, "HOME");
     this.modalHomeNode = home.node;
+    this.modalHomeVisual = home;
+    this.createButtonIcon(home, "ModalHomeIcon", 22, -30);
     home.node.on(Node.EventType.TOUCH_END, this.onModalHome, this);
     home.node.active = false;
 
@@ -580,6 +620,112 @@ export class SandfallGameComponent extends Component {
       }
       sprite.spriteFrame = frame;
     });
+  }
+
+  private loadGameplayUiAssets(): void {
+    if (this.gameplayUiAssetsRequested) {
+      return;
+    }
+    this.gameplayUiAssetsRequested = true;
+    this.loadGameplaySpriteFrame("art/ui/icons/pause", (frame) => {
+      this.pauseIconFrame = frame;
+      this.syncPhaseUiArt(this.session?.phase ?? "Idle");
+    });
+    this.loadGameplaySpriteFrame("art/ui/icons/resume", (frame) => {
+      this.resumeIconFrame = frame;
+      this.syncPhaseUiArt(this.session?.phase ?? "Idle");
+    });
+    this.loadGameplaySpriteFrame("art/ui/icons/restart", (frame) => {
+      this.restartIconFrame = frame;
+      this.syncPhaseUiArt(this.session?.phase ?? "Idle");
+    });
+    this.loadGameplaySpriteFrame("art/ui/icons/home", (frame) => {
+      this.homeIconFrame = frame;
+      this.syncPhaseUiArt(this.session?.phase ?? "Idle");
+    });
+    this.loadGameplaySpriteFrame("art/ui/modal/pause", (frame) => {
+      this.modalPauseDecorationFrame = frame;
+      this.syncPhaseUiArt(this.session?.phase ?? "Idle");
+    });
+    this.loadGameplaySpriteFrame("art/ui/modal/game-over", (frame) => {
+      this.modalGameOverDecorationFrame = frame;
+      this.syncPhaseUiArt(this.session?.phase ?? "Idle");
+    });
+    this.loadGameplaySpriteFrame("art/ui/feedback/level-up", (frame) => {
+      this.scoreFeedbackLevelFrame = frame;
+      this.syncScoreFeedbackDecoration(1);
+    });
+    this.loadGameplaySpriteFrame("art/ui/feedback/chain-mask", (frame) => {
+      this.scoreFeedbackChainFrame = frame;
+      this.syncScoreFeedbackDecoration(1);
+    });
+  }
+
+  private loadGameplaySpriteFrame(
+    path: string,
+    onLoaded: (frame: SpriteFrame) => void,
+  ): void {
+    resources.load(`${path}/spriteFrame`, SpriteFrame, (error, frame) => {
+      if (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.warn(`[Sandfall] Failed to load gameplay UI art: ${path} · ${message}`);
+        return;
+      }
+      onLoaded(frame);
+    });
+  }
+
+  private syncPhaseUiArt(phase: GamePhase): void {
+    const paused = phase === "Paused";
+    const gameOver = phase === "GameOver";
+    const pauseFrame = paused ? this.resumeIconFrame : this.pauseIconFrame;
+    if (this.pauseButtonVisual !== null) {
+      const icon = this.pauseButtonVisual.icon;
+      if (icon !== null) {
+        icon.spriteFrame = pauseFrame;
+        icon.node.active = pauseFrame !== null;
+      }
+      this.pauseButtonVisual.label.node.active = pauseFrame === null;
+    }
+
+    const actionFrame = paused
+      ? this.resumeIconFrame
+      : gameOver
+        ? this.restartIconFrame
+        : null;
+    this.applyButtonIconLayout(this.modalActionVisual, actionFrame, 12, 80);
+    this.applyButtonIconLayout(this.modalHomeVisual, this.homeIconFrame, 10, 58);
+
+    if (this.modalDecorationSprite !== null) {
+      const decorationFrame = paused
+        ? this.modalPauseDecorationFrame
+        : gameOver
+          ? this.modalGameOverDecorationFrame
+          : null;
+      this.modalDecorationSprite.spriteFrame = decorationFrame;
+      this.modalDecorationSprite.node.active = decorationFrame !== null;
+    }
+  }
+
+  private applyButtonIconLayout(
+    button: UiButtonVisual | null,
+    frame: SpriteFrame | null,
+    labelX: number,
+    labelWidth: number,
+  ): void {
+    if (button === null || button.icon === null) {
+      return;
+    }
+    button.icon.spriteFrame = frame;
+    button.icon.node.active = frame !== null;
+    const labelTransform = button.label.node.getComponent(UITransform);
+    if (frame === null) {
+      button.label.node.setPosition(0, 0);
+      labelTransform?.setContentSize(button.width - 8, button.height - 4);
+    } else {
+      button.label.node.setPosition(labelX, 0);
+      labelTransform?.setContentSize(labelWidth, button.height - 4);
+    }
   }
 
   private createHomeGrainParticles(): void {
@@ -828,6 +974,75 @@ export class SandfallGameComponent extends Component {
     this.tracePixelChamferRect(graphics, -70, -31, 140, 62, 6);
     graphics.stroke();
     this.drawPixelCornerGrains(graphics, -75, -36, 150, 72, accent, selected ? 255 : 150);
+  }
+
+  private drawHudPanel(
+    graphics: Graphics,
+    width: number,
+    height: number,
+    accent: Color,
+  ): void {
+    const left = -width / 2;
+    const bottom = -height / 2;
+    graphics.clear();
+    graphics.fillColor = new Color(12, 18, 31, 245);
+    this.tracePixelSteppedRect(graphics, left, bottom, width, height, 8);
+    graphics.fill();
+
+    graphics.strokeColor = new Color(78, 115, 152, 255);
+    graphics.lineWidth = 2;
+    this.tracePixelSteppedRect(graphics, left + 1, bottom + 1, width - 2, height - 2, 7);
+    graphics.stroke();
+
+    graphics.strokeColor = new Color(55, 83, 115, 210);
+    graphics.lineWidth = 1;
+    this.tracePixelSteppedRect(graphics, left + 3, bottom + 3, width - 6, height - 6, 5);
+    graphics.stroke();
+
+    graphics.strokeColor = accent;
+    graphics.lineWidth = 2;
+    graphics.moveTo(left + 14, bottom + height - 5);
+    graphics.lineTo(left + Math.min(46, width * 0.48), bottom + height - 5);
+    graphics.stroke();
+
+    graphics.fillColor = accent;
+    graphics.rect(left + 6, bottom + height - 12, 2, 2);
+    graphics.rect(left + width - 8, bottom + 7, 2, 2);
+    graphics.fill();
+  }
+
+  private tracePixelSteppedRect(
+    graphics: Graphics,
+    left: number,
+    bottom: number,
+    width: number,
+    height: number,
+    cut: number,
+  ): void {
+    const right = left + width;
+    const top = bottom + height;
+    const half = cut / 2;
+    graphics.moveTo(left + cut, bottom);
+    graphics.lineTo(right - cut, bottom);
+    graphics.lineTo(right - half, bottom);
+    graphics.lineTo(right - half, bottom + half);
+    graphics.lineTo(right, bottom + half);
+    graphics.lineTo(right, bottom + cut);
+    graphics.lineTo(right, top - cut);
+    graphics.lineTo(right, top - half);
+    graphics.lineTo(right - half, top - half);
+    graphics.lineTo(right - half, top);
+    graphics.lineTo(right - cut, top);
+    graphics.lineTo(left + cut, top);
+    graphics.lineTo(left + half, top);
+    graphics.lineTo(left + half, top - half);
+    graphics.lineTo(left, top - half);
+    graphics.lineTo(left, top - cut);
+    graphics.lineTo(left, bottom + cut);
+    graphics.lineTo(left, bottom + half);
+    graphics.lineTo(left + half, bottom + half);
+    graphics.lineTo(left + half, bottom);
+    graphics.close();
   }
 
   private tracePixelChamferRect(
@@ -1161,31 +1376,161 @@ export class SandfallGameComponent extends Component {
     width: number,
     height: number,
     text: string,
-  ): { readonly node: Node; readonly label: Label } {
+    accentDefault = false,
+  ): UiButtonVisual {
     const buttonNode = new Node(name);
     buttonNode.layer = parent.layer;
     buttonNode.setPosition(x, y);
     parent.addChild(buttonNode);
     buttonNode.addComponent(UITransform).setContentSize(width, height);
-    const background = buttonNode.addComponent(Graphics);
-    background.fillColor = new Color(45, 92, 166, 255);
-    background.roundRect(-width / 2, -height / 2, width, height, Math.min(9, height / 2));
-    background.fill();
-    background.strokeColor = new Color(108, 162, 245, 255);
-    background.lineWidth = 1.5;
-    background.roundRect(
-      -width / 2 + 1,
-      -height / 2 + 1,
-      width - 2,
-      height - 2,
-      Math.min(8, height / 2 - 1),
-    );
-    background.stroke();
 
-    const label = this.createLabel(buttonNode, `${name}Label`, 0, 0, width - 8, height - 4, 14);
+    const visualNode = new Node(`${name}Visual`);
+    visualNode.layer = buttonNode.layer;
+    buttonNode.addChild(visualNode);
+    visualNode.addComponent(UITransform).setContentSize(width, height);
+    const background = visualNode.addComponent(Graphics);
+
+    const label = this.createLabel(visualNode, `${name}Label`, 0, 0, width - 8, height - 4, 14);
     label.string = text;
-    label.color = new Color(248, 251, 255, 255);
-    return { node: buttonNode, label };
+    const button: UiButtonVisual = {
+      node: buttonNode,
+      visualNode,
+      background,
+      label,
+      width,
+      height,
+      cut: height <= 38 ? 6 : 8,
+      accentDefault,
+      icon: null,
+      baseState: "default",
+    };
+    this.setButtonVisualState(button, "default");
+
+    buttonNode.on(Node.EventType.TOUCH_START, () => {
+      if (button.baseState !== "disabled") {
+        this.setButtonVisualState(button, "pressed");
+      }
+    });
+    buttonNode.on(Node.EventType.TOUCH_MOVE, (event: EventTouch) => {
+      if (button.baseState === "disabled") {
+        return;
+      }
+      const transform = buttonNode.getComponent(UITransform);
+      const inside = transform?.hitTest(event.getUILocation()) ?? false;
+      this.setButtonVisualState(button, inside ? "pressed" : button.baseState);
+    });
+    const restore = (): void => this.setButtonVisualState(button, button.baseState);
+    buttonNode.on(Node.EventType.TOUCH_END, restore);
+    buttonNode.on(Node.EventType.TOUCH_CANCEL, restore);
+    return button;
+  }
+
+  private createButtonIcon(
+    button: UiButtonVisual,
+    name: string,
+    size: number,
+    x: number,
+  ): Sprite {
+    const iconNode = new Node(name);
+    iconNode.layer = button.visualNode.layer;
+    iconNode.setPosition(x, 0);
+    button.visualNode.addChild(iconNode);
+    iconNode.addComponent(UITransform).setContentSize(size, size);
+    const icon = iconNode.addComponent(Sprite);
+    icon.sizeMode = Sprite.SizeMode.CUSTOM;
+    iconNode.active = false;
+    button.icon = icon;
+    this.setButtonVisualState(button, button.baseState);
+    return icon;
+  }
+
+  private setButtonVisualState(button: UiButtonVisual, state: UiButtonState): void {
+    if (state !== "pressed") {
+      button.baseState = state;
+    }
+    const disabled = state === "disabled";
+    const fill = state === "pressed"
+      ? new Color(11, 27, 44, 255)
+      : state === "selected"
+        ? new Color(16, 42, 53, 255)
+        : disabled
+          ? new Color(12, 18, 31, 107)
+          : new Color(9, 23, 40, 255);
+    const border = state === "pressed" || state === "selected" || (state === "default" && button.accentDefault)
+      ? new Color(65, 205, 195, disabled ? 107 : 255)
+      : disabled
+        ? new Color(55, 83, 115, 107)
+        : new Color(78, 115, 152, 255);
+    const content = state === "pressed"
+      ? new Color(238, 243, 255, 255)
+      : state === "selected"
+        ? new Color(65, 205, 195, 255)
+        : state === "default" && button.accentDefault
+          ? new Color(65, 205, 195, 255)
+        : disabled
+          ? new Color(111, 142, 177, 107)
+          : new Color(180, 194, 219, 255);
+    const inner = disabled
+      ? new Color(55, 83, 115, 82)
+      : new Color(55, 83, 115, 205);
+    const graphics = button.background;
+    const left = -button.width / 2;
+    const bottom = -button.height / 2;
+    graphics.clear();
+    graphics.fillColor = fill;
+    this.tracePixelSteppedRect(
+      graphics,
+      left,
+      bottom,
+      button.width,
+      button.height,
+      button.cut,
+    );
+    graphics.fill();
+    graphics.strokeColor = border;
+    graphics.lineWidth = disabled ? 1 : 2;
+    this.tracePixelSteppedRect(
+      graphics,
+      left + 1,
+      bottom + 1,
+      button.width - 2,
+      button.height - 2,
+      button.cut - 1,
+    );
+    graphics.stroke();
+    graphics.strokeColor = inner;
+    graphics.lineWidth = 1;
+    this.tracePixelSteppedRect(
+      graphics,
+      left + 3,
+      bottom + 3,
+      button.width - 6,
+      button.height - 6,
+      Math.max(2, button.cut - 3),
+    );
+    graphics.stroke();
+
+    graphics.strokeColor = border;
+    graphics.lineWidth = 2;
+    graphics.moveTo(left + 12, bottom + button.height - 5);
+    graphics.lineTo(
+      left + (state === "selected" ? Math.min(button.width - 12, 58) : Math.min(button.width - 12, 36)),
+      bottom + button.height - 5,
+    );
+    graphics.stroke();
+    graphics.fillColor = border;
+    graphics.rect(left + 6, bottom + 7, 2, 2);
+    graphics.rect(left + button.width - 8, bottom + button.height - 10, 2, 2);
+    if (state === "selected") {
+      graphics.rect(left + button.width - 9, bottom + button.height - 9, 4, 4);
+    }
+    graphics.fill();
+
+    button.visualNode.setPosition(0, state === "pressed" ? -2 : 0);
+    button.label.color = content;
+    if (button.icon !== null) {
+      button.icon.color = content;
+    }
   }
 
   protected onEnable(): void {
@@ -1284,6 +1629,7 @@ export class SandfallGameComponent extends Component {
     this.scoreFeedbackBaseX = layout.boardX;
     this.scoreFeedbackBaseY = layout.feedbackY;
     this.scoreFeedbackLabel?.node.setPosition(layout.boardX, layout.feedbackY);
+    this.scoreFeedbackDecorationSprite?.node.setPosition(layout.boardX, layout.feedbackY);
 
     const safeCenterX = (safeAreaInsets.left - safeAreaInsets.right) / 2;
     const safeCenterY = (safeAreaInsets.bottom - safeAreaInsets.top) / 2;
@@ -1532,6 +1878,7 @@ export class SandfallGameComponent extends Component {
     }
 
     const phase = this.session.phase;
+    this.syncPhaseUiArt(phase);
     const modal = this.modalOverlayNode;
     if (modal === null) {
       return;
@@ -1653,6 +2000,9 @@ export class SandfallGameComponent extends Component {
     if (!visible && this.scoreFeedbackLabel !== null) {
       this.scoreFeedbackLabel.node.active = false;
     }
+    if (!visible && this.scoreFeedbackDecorationSprite !== null) {
+      this.scoreFeedbackDecorationSprite.node.active = false;
+    }
   }
 
   private updateScoreFeedback(deltaTime: number): void {
@@ -1665,6 +2015,7 @@ export class SandfallGameComponent extends Component {
       this.scoreFeedbackElapsedSeconds = 0;
       this.scoreFeedbackShowsLevelUp = true;
       this.scoreFeedbackShowsChain = false;
+      this.scoreFeedbackChainLevel = 0;
       this.scorePulseElapsedSeconds = 0;
       if (this.scoreFeedbackLabel !== null) {
         this.scoreFeedbackLabel.string = colorCount > this.lastRenderedColorCount
@@ -1678,6 +2029,7 @@ export class SandfallGameComponent extends Component {
       this.scoreFeedbackElapsedSeconds = 0;
       this.scoreFeedbackShowsLevelUp = false;
       this.scoreFeedbackShowsChain = true;
+      this.scoreFeedbackChainLevel = chainLevel;
       this.scorePulseElapsedSeconds = 0;
       if (this.scoreFeedbackLabel !== null) {
         this.scoreFeedbackLabel.string = `CHAIN ×${chainLevel}  ·  +${added}`;
@@ -1693,6 +2045,7 @@ export class SandfallGameComponent extends Component {
       this.scoreFeedbackElapsedSeconds = 0;
       this.scoreFeedbackShowsLevelUp = false;
       this.scoreFeedbackShowsChain = false;
+      this.scoreFeedbackChainLevel = 0;
       this.scorePulseElapsedSeconds = 0;
       if (this.scoreFeedbackLabel !== null) {
         this.scoreFeedbackLabel.string = `+${this.scoreFeedbackAmount}`;
@@ -1703,6 +2056,7 @@ export class SandfallGameComponent extends Component {
       this.scoreFeedbackElapsedSeconds = Number.POSITIVE_INFINITY;
       this.scoreFeedbackShowsLevelUp = false;
       this.scoreFeedbackShowsChain = false;
+      this.scoreFeedbackChainLevel = 0;
       this.scorePulseElapsedSeconds = Number.POSITIVE_INFINITY;
       if (this.scoreFeedbackLabel !== null) {
         this.scoreFeedbackLabel.node.active = false;
@@ -1732,14 +2086,27 @@ export class SandfallGameComponent extends Component {
       feedback.color = this.scoreFeedbackShowsLevelUp
         ? new Color(105, 220, 255, Math.round(255 * fade))
         : this.scoreFeedbackShowsChain
-          ? new Color(255, 190, 68, Math.round(255 * fade))
+          ? this.chainFeedbackColor(this.scoreFeedbackChainLevel, Math.round(255 * fade))
           : new Color(255, 222, 102, Math.round(255 * fade));
+      const decoration = this.scoreFeedbackDecorationSprite;
+      if (decoration !== null) {
+        decoration.node.setPosition(
+          this.scoreFeedbackBaseX,
+          this.scoreFeedbackBaseY + progress * 34,
+        );
+        decoration.node.setScale(scale, scale, 1);
+        this.syncScoreFeedbackDecoration(fade);
+      }
       if (progress >= 1) {
         feedback.node.active = false;
+        if (decoration !== null) {
+          decoration.node.active = false;
+        }
         this.scoreFeedbackElapsedSeconds = Number.POSITIVE_INFINITY;
         this.scoreFeedbackAmount = 0;
         this.scoreFeedbackShowsLevelUp = false;
         this.scoreFeedbackShowsChain = false;
+        this.scoreFeedbackChainLevel = 0;
       }
     }
 
@@ -1754,6 +2121,44 @@ export class SandfallGameComponent extends Component {
         this.scorePulseElapsedSeconds = Number.POSITIVE_INFINITY;
       }
     }
+  }
+
+  private chainFeedbackColor(chainLevel: number, alpha: number): Color {
+    if (chainLevel >= 4) {
+      return new Color(194, 87, 183, alpha);
+    }
+    if (chainLevel >= 3) {
+      return new Color(255, 99, 107, alpha);
+    }
+    return new Color(255, 200, 87, alpha);
+  }
+
+  private syncScoreFeedbackDecoration(fade: number): void {
+    const decoration = this.scoreFeedbackDecorationSprite;
+    if (decoration === null) {
+      return;
+    }
+    if (this.scoreFeedbackShowsLevelUp && this.scoreFeedbackLevelFrame !== null) {
+      decoration.spriteFrame = this.scoreFeedbackLevelFrame;
+      decoration.color = new Color(255, 255, 255, Math.round(255 * fade));
+      decoration.node.active = true;
+      return;
+    }
+    if (this.scoreFeedbackShowsChain && this.scoreFeedbackChainFrame !== null) {
+      decoration.spriteFrame = this.scoreFeedbackChainFrame;
+      const tierOpacity = this.scoreFeedbackChainLevel >= 4
+        ? 1
+        : this.scoreFeedbackChainLevel >= 3
+          ? 0.92
+          : 0.82;
+      decoration.color = this.chainFeedbackColor(
+        this.scoreFeedbackChainLevel,
+        Math.round(255 * fade * tierOpacity),
+      );
+      decoration.node.active = true;
+      return;
+    }
+    decoration.node.active = false;
   }
 
   private formatScore(score: number): string {
@@ -2269,9 +2674,13 @@ export class SandfallGameComponent extends Component {
     this.scoreFeedbackElapsedSeconds = Number.POSITIVE_INFINITY;
     this.scoreFeedbackShowsLevelUp = false;
     this.scoreFeedbackShowsChain = false;
+    this.scoreFeedbackChainLevel = 0;
     this.scorePulseElapsedSeconds = Number.POSITIVE_INFINITY;
     if (this.scoreFeedbackLabel !== null) {
       this.scoreFeedbackLabel.node.active = false;
+    }
+    if (this.scoreFeedbackDecorationSprite !== null) {
+      this.scoreFeedbackDecorationSprite.node.active = false;
     }
   }
 
