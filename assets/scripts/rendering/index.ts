@@ -9,6 +9,21 @@ export { PieceVisualAnimator } from "./PieceVisualAnimator";
 export { layoutPiecePreview } from "./PiecePreviewLayout";
 export { fitResponsiveGameLayout } from "./ResponsiveGameLayout";
 export { sandifyGrainVisible } from "./SandifyDissolve";
+export { dangerZonePulse, sampleDangerZone } from "./DangerZoneEffect";
+export type { DangerZoneSample } from "./DangerZoneEffect";
+export {
+  DEFAULT_VFX_BUDGET,
+  parseVfxAtlasLayout,
+  REQUIRED_VFX_SPRITES,
+  VfxBudget,
+} from "./VfxRuntime";
+export type {
+  VfxAtlasLayout,
+  VfxAtlasSprite,
+  VfxBudgetLimits,
+  VfxKind,
+  VfxSpriteName,
+} from "./VfxRuntime";
 export type {
   PieceVisualAnimatorOptions,
   PieceVisualState,

@@ -164,16 +164,22 @@ distribution/art/              # 平台图标、分享图、宣传图，不进�
 
 ## 7. 批次 E：游戏特效素材
 
-- [ ] `ART-E01` 细沙尘粒子贴图组（`G+`）
+- [x] `ART-E01` 细沙尘粒子贴图组（`G+`）
   - 2～4 枚透明单色粒子，运行时着色复用。
-- [ ] `ART-E02` 柔光光斑与光环贴图（`G+`）
+  - 已输出 [四枚粒子规范板](../art-source/concepts/art-e01-particle-sprite-system.png)、[32 px 运行尺寸检查](../art-source/concepts/art-e01-particle-sprite-1x-check.png)与[源文件/透明度/性能预算规范](../art-source/briefs/ART-E01-particle-sprite-system.md)：冲击尘团、上升尘缕、外扩爆散和下落砂迹统一为 `32×32` 白色 alpha 蒙版，并保留 `64×64` 二倍归档；正式尺寸已在 E06 合图并接入固定运行池。
+- [x] `ART-E02` 柔光光斑与光环贴图（`G+`）
   - 用于消除、连锁和等级提升，避免预烘焙具体颜色。
-- [ ] `ART-E03` 横向流光/拖尾贴图（`G+`）
-- [ ] `ART-E04` 沙化细碎纹理或噪声图（`G+`）
-- [ ] `ART-E05` 顶部危险区域动态效果（`C`）
+  - 已输出 [光斑/光环规范板](../art-source/concepts/art-e02-glow-halo-system.png)、[实际尺寸检查](../art-source/concepts/art-e02-glow-halo-size-check.png)与[距离场/混合/性能预算规范](../art-source/briefs/ART-E02-glow-halo-system.md)：核心光斑为 `64×64`，分段脉冲环和阶梯菱形环为 `128×128`，均使用可由 Cocos 着色的白色 alpha 与量化像素衰减；已在 E06 用于落地、消除和升级反馈。
+- [x] `ART-E03` 横向流光/拖尾贴图（`G+`）
+  - 已输出 [横向流光/拖尾规范板](../art-source/concepts/art-e03-horizontal-trail-system.png)、[实际尺寸检查](../art-source/concepts/art-e03-horizontal-trail-size-check.png)与[轨道/翻转/性能预算规范](../art-source/briefs/ART-E03-horizontal-trail-system.md)：`256×32` 双向消除扫光、`128×32` 单向彗尾和 `128×24` 稀疏砂粒流线均为白色 alpha，可由 Cocos 着色；右向纹理通过水平翻转复用，已在 E06 接入移动、沙化和消除事件。
+- [x] `ART-E04` 沙化细碎纹理或噪声图（`G+`）
+  - 已输出 [沙化细碎纹理规范板](../art-source/concepts/art-e04-sand-dissolve-texture-system.png)、[实际尺寸与平铺检查](../art-source/concepts/art-e04-sand-dissolve-size-check.png)与[阈值/采样/材质合同](../art-source/briefs/ART-E04-sand-dissolve-textures.md)：细粒阈值图与聚块阈值图均为 `64×64` 可平铺白色 alpha，使用 16 档稳定排名和 nearest 采样，并各保留 `128×128` 二倍归档；已在 E06 以同图集 Sprite Alpha 蒙版接入沙化过渡。
+- [x] `ART-E05` 顶部危险区域动态效果（`C`）
   - 优先代码或 Shader，不制作固定屏幕尺寸遮罩。
-- [ ] `ART-E06` 特效图集与 Cocos 实装（`C`）
+  - 已完成 [顶部危险区域动态效果与性能规范](../art-source/briefs/ART-E05-top-danger-zone-effect.md)：顶部四个宏格范围使用单个自适应 `Graphics` 节点绘制常驻分段警戒线、低频透明区域带和最多 14 枚确定性方粒；警示强度按最高堆积位置与区域密度计算，不改变 Game Over 规则。新增 6 个单元测试，Cocos Creator 3.8.8 Web Mobile 构建与 `390×844` 空棋盘预览通过。
+- [x] `ART-E06` 特效图集与 Cocos 实装（`C`）
   - 合并小图、减少 Draw Call，限制同屏粒子数量。
+  - 已完成 [特效图集与 Cocos 实装规范](../art-source/briefs/ART-E06-vfx-atlas-cocos-integration.md)及 [512×256 图集评审板](../art-source/concepts/art-e06-vfx-atlas-system.png)：E01～E04 的 12 枚白色 Alpha 素材合并为单纹理，固定使用 nearest、clamp 与无 mipmap；运行时预建 31 个 Sprite 节点，预算为粒子 24、光环 4、拖尾 3，并接入移动、落地、硬降、沙化、消除和升级事件。新增 5 项图集/预算测试，完整 128 项测试、Cocos Creator 3.8.8 Web Mobile 构建及 `390×844` 浏览器复验通过。
 - [ ] `ART-E07` 低端机性能与光敏感性验收
   - 微信、抖音真机检查帧率、闪光强度和长时间游玩舒适度。
 
@@ -225,4 +231,4 @@ distribution/art/              # 平台图标、分享图、宣传图，不进�
 
 ## 11. 下一步
 
-批次 C 已完成：C01～C08 的霓虹像素游戏内 UI 规范、运行资源与 Cocos 实装均已落地，C09 的 Web Mobile、微信与抖音构建及真机验收通过。下一项为批次 D 的 `ART-D01` 左右拖动教学图。
+批次 C 已完成。当前批次 E 的 `ART-E01`～`ART-E06` 已完成；下一项为 `ART-E07` 低端机性能与光敏感性验收。

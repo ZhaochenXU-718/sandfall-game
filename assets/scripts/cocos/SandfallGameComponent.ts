@@ -40,9 +40,19 @@ import {
   type GameMode,
   type RulesConfig,
 } from "../core/RulesConfig";
+import type { ActivePieceState } from "../core/PieceTypes";
 import { CocosFeedbackController } from "./CocosFeedbackController";
+import {
+  CocosVfxController,
+  type SandifyVfxCell,
+  type VfxTint,
+} from "./CocosVfxController";
 import { layoutPiecePreview } from "../rendering/PiecePreviewLayout";
 import { PieceVisualAnimator } from "../rendering/PieceVisualAnimator";
+import {
+  dangerZonePulse,
+  sampleDangerZone,
+} from "../rendering/DangerZoneEffect";
 import {
   fitResponsiveGameLayout,
   type SafeAreaInsets,
@@ -235,6 +245,11 @@ export class SandfallGameComponent extends Component {
   private lastFeedbackLockSequence = 0;
   private readonly pressedKeys = new Set<KeyCode>();
   private gameplayUiAssetsRequested = false;
+  private dangerZoneGraphics: Graphics | null = null;
+  private dangerZoneTargetIntensity = 0;
+  private dangerZoneVisualIntensity = 0;
+  private dangerZoneElapsedSeconds = 0;
+  private vfxController: CocosVfxController | null = null;
 
   protected onLoad(): void {
     profiler.hideStats();
@@ -313,6 +328,19 @@ export class SandfallGameComponent extends Component {
       boardNode.addChild(pieceNode);
       pieceNode.addComponent(UITransform).setContentSize(280, 672);
       this.pieceGraphics = pieceNode.addComponent(Graphics);
+    }
+
+    if (this.dangerZoneGraphics === null && this.sandSprite !== null) {
+      const dangerNode = new Node("DangerZoneEffect");
+      dangerNode.layer = this.sandSprite.node.layer;
+      this.sandSprite.node.addChild(dangerNode);
+      dangerNode.addComponent(UITransform).setContentSize(280, 672);
+      this.dangerZoneGraphics = dangerNode.addComponent(Graphics);
+    }
+
+    if (this.vfxController === null && this.sandSprite !== null) {
+      this.vfxController = new CocosVfxController(this.sandSprite.node);
+      this.vfxController.load();
     }
 
     if (this.nextPieceGraphics === null) {
@@ -1593,6 +1621,8 @@ export class SandfallGameComponent extends Component {
     view.off("canvas-resize", this.onViewResized, this);
     game.off(Game.EVENT_HIDE, this.onApplicationHide, this);
     this.feedback?.destroy();
+    this.vfxController?.destroy();
+    this.vfxController = null;
     this.spriteFrame?.destroy();
     this.texture?.destroy();
     this.spriteFrame = null;
@@ -1622,6 +1652,10 @@ export class SandfallGameComponent extends Component {
         .getComponent(UITransform)
         ?.setContentSize(layout.boardWidth, layout.boardHeight);
     }
+    this.dangerZoneGraphics?.node
+      .getComponent(UITransform)
+      ?.setContentSize(layout.boardWidth, layout.boardHeight);
+    this.vfxController?.resize(layout.boardWidth, layout.boardHeight);
 
     this.statusPanelNode?.setPosition(layout.statusX, layout.hudPanelY);
     this.nextPanelNode?.setPosition(layout.nextX, layout.hudPanelY);
@@ -1802,6 +1836,8 @@ export class SandfallGameComponent extends Component {
     }
     this.lastRenderedClearEffect = hasClearEffect;
     this.renderActivePiece(deltaTime, renderAheadSeconds);
+    this.renderDangerZone(deltaTime, boardChanged);
+    this.vfxController?.update(deltaTime);
     this.renderNextPiece();
     this.renderHudAndModal(deltaTime);
     this.renderHomeScreen(deltaTime);
@@ -1852,6 +1888,128 @@ export class SandfallGameComponent extends Component {
       gfxTexture,
       [region],
     );
+  }
+
+  private renderDangerZone(deltaTime: number, boardChanged: boolean): void {
+    const graphics = this.dangerZoneGraphics;
+    const transform = graphics?.node.getComponent(UITransform);
+    if (
+      graphics === null
+      || graphics === undefined
+      || transform === null
+      || transform === undefined
+    ) {
+      return;
+    }
+    graphics.clear();
+    if (this.session.phase === "Idle") {
+      return;
+    }
+
+    if (boardChanged) {
+      const zoneRows = Math.min(
+        this.session.boardHeight,
+        this.rules.grainsPerCell * 4,
+      );
+      this.dangerZoneTargetIntensity = sampleDangerZone(
+        this.boardCells,
+        this.session.boardWidth,
+        this.session.boardHeight,
+        zoneRows,
+      ).intensity;
+    }
+    if (this.session.phase === "GameOver") {
+      this.dangerZoneTargetIntensity = 1;
+    }
+
+    const step = Math.max(0, Math.min(0.05, deltaTime));
+    this.dangerZoneElapsedSeconds = (
+      this.dangerZoneElapsedSeconds + step
+    ) % 1000;
+    if (step > 0) {
+      const response = this.dangerZoneTargetIntensity > this.dangerZoneVisualIntensity
+        ? 6
+        : 3.5;
+      const blend = 1 - Math.exp(-step * response);
+      this.dangerZoneVisualIntensity += (
+        this.dangerZoneTargetIntensity - this.dangerZoneVisualIntensity
+      ) * blend;
+    }
+
+    const width = transform.contentSize.width;
+    const height = transform.contentSize.height;
+    const left = -width / 2;
+    const top = height / 2;
+    const zoneHeight = (
+      height * Math.min(4, this.rules.macroHeight) / this.rules.macroHeight
+    );
+    const boundaryY = top - zoneHeight;
+    const intensity = dangerZonePulse(
+      Math.max(0, Math.min(1, this.dangerZoneVisualIntensity)),
+      this.dangerZoneElapsedSeconds,
+    );
+
+    if (intensity > 0.02) {
+      const stripHeight = zoneHeight / 4;
+      for (let strip = 0; strip < 4; strip += 1) {
+        const fade = 1 - strip / 4;
+        graphics.fillColor = new Color(255, 72, 85, Math.round(intensity * 22 * fade));
+        graphics.rect(left, top - (strip + 1) * stripHeight, width, stripHeight);
+        graphics.fill();
+      }
+      graphics.fillColor = new Color(255, 99, 107, Math.round(20 + intensity * 46));
+      graphics.rect(left, top - 2, width, 2);
+      graphics.fill();
+    }
+
+    const segmentWidth = Math.max(8, Math.floor(width / 22));
+    const segmentGap = Math.max(4, Math.floor(segmentWidth * 0.55));
+    graphics.fillColor = new Color(255, 99, 107, Math.round(34 + intensity * 102));
+    for (let x = left; x < left + width; x += segmentWidth + segmentGap) {
+      graphics.rect(x, boundaryY, Math.min(segmentWidth, left + width - x), 2);
+    }
+    graphics.fill();
+
+    const moteCount = Math.ceil(intensity * 14);
+    if (moteCount <= 0) {
+      return;
+    }
+    graphics.fillColor = new Color(255, 99, 107, Math.round(34 + intensity * 82));
+    for (let index = 0; index < moteCount; index += 1) {
+      if (index % 4 === 0 && intensity > 0.55) {
+        continue;
+      }
+      const seedX = dangerMoteUnit(index, 1);
+      const seedY = dangerMoteUnit(index, 2);
+      const speed = 0.055 + dangerMoteUnit(index, 3) * 0.055;
+      const travel = (seedY + this.dangerZoneElapsedSeconds * speed) % 1;
+      const size = index % 5 === 0 ? 3 : index % 2 === 0 ? 2 : 1;
+      graphics.rect(
+        left + 6 + seedX * Math.max(0, width - 12),
+        top - 6 - travel * Math.max(0, zoneHeight - 12),
+        size,
+        size,
+      );
+    }
+    graphics.fill();
+
+    if (intensity > 0.55) {
+      graphics.fillColor = new Color(255, 200, 87, Math.round(24 + intensity * 72));
+      for (let index = 0; index < moteCount; index += 4) {
+        const travel = (
+          dangerMoteUnit(index, 5)
+          + this.dangerZoneElapsedSeconds * (0.045 + dangerMoteUnit(index, 6) * 0.04)
+        ) % 1;
+        const size = index % 8 === 0 ? 3 : 2;
+        graphics.rect(
+          left + 6 + dangerMoteUnit(index, 4) * Math.max(0, width - 12),
+          top - 6 - travel * Math.max(0, zoneHeight - 12),
+          size,
+          size,
+        );
+      }
+      graphics.fill();
+    }
   }
 
   private renderHudAndModal(deltaTime: number): void {
@@ -2011,6 +2169,7 @@ export class SandfallGameComponent extends Component {
     const colorCount = this.session.activeColorCount;
     const chainLevel = this.session.chainLevel;
     if (level > this.lastRenderedLevel) {
+      this.vfxController?.emitLevelUp(0, 0, { r: 255, g: 209, b: 92 });
       this.scoreFeedbackAmount = 0;
       this.scoreFeedbackElapsedSeconds = 0;
       this.scoreFeedbackShowsLevelUp = true;
@@ -2624,6 +2783,15 @@ export class SandfallGameComponent extends Component {
     const moved = direction === -1 ? this.session.moveLeft() : this.session.moveRight();
     if (moved) {
       this.feedback.trigger("move");
+      const geometry = this.resolvePieceVfxGeometry(this.session.activePiece);
+      if (geometry !== undefined) {
+        this.vfxController?.emitMoveTrail(
+          geometry.centerX,
+          geometry.centerY,
+          geometry.color,
+          direction,
+        );
+      }
     }
     return moved;
   }
@@ -2641,6 +2809,15 @@ export class SandfallGameComponent extends Component {
     this.session.hardDrop();
     if (this.session.lockSequence > lockSequence) {
       this.feedback.trigger("hard-drop");
+      const geometry = this.resolvePieceVfxGeometry(this.session.lastLockedPiece);
+      if (geometry !== undefined) {
+        this.vfxController?.emitImpact(
+          geometry.centerX,
+          geometry.bottomY,
+          geometry.color,
+          1.25,
+        );
+      }
     }
   }
 
@@ -2648,12 +2825,26 @@ export class SandfallGameComponent extends Component {
     const phase = this.session.phase;
     if (phase === "LockDelay" && this.lastFeedbackPhase !== "LockDelay") {
       this.feedback.trigger("land");
+      const geometry = this.resolvePieceVfxGeometry(this.session.activePiece);
+      if (geometry !== undefined) {
+        this.vfxController?.emitImpact(
+          geometry.centerX,
+          geometry.bottomY,
+          geometry.color,
+        );
+      }
     }
     if (this.session.lockSequence > this.lastFeedbackLockSequence) {
       this.feedback.trigger("sandify");
+      const geometry = this.resolvePieceVfxGeometry(this.session.lastLockedPiece);
+      if (geometry !== undefined) {
+        this.vfxController?.emitSandify(geometry.cells, geometry.color);
+      }
     }
     if (phase === "Clearing" && this.lastFeedbackPhase !== "Clearing") {
-      this.feedback.triggerClear(this.session.chainLevel + 1);
+      const pendingChain = this.session.chainLevel + 1;
+      this.feedback.triggerClear(pendingChain);
+      this.emitClearVfx(pendingChain);
     }
     if (phase === "GameOver" && this.lastFeedbackPhase !== "GameOver") {
       this.feedback.trigger("game-over");
@@ -2676,12 +2867,100 @@ export class SandfallGameComponent extends Component {
     this.scoreFeedbackShowsChain = false;
     this.scoreFeedbackChainLevel = 0;
     this.scorePulseElapsedSeconds = Number.POSITIVE_INFINITY;
+    this.dangerZoneTargetIntensity = 0;
+    this.dangerZoneVisualIntensity = 0;
+    this.dangerZoneElapsedSeconds = 0;
+    this.dangerZoneGraphics?.clear();
+    this.vfxController?.reset();
     if (this.scoreFeedbackLabel !== null) {
       this.scoreFeedbackLabel.node.active = false;
     }
     if (this.scoreFeedbackDecorationSprite !== null) {
       this.scoreFeedbackDecorationSprite.node.active = false;
     }
+  }
+
+  private resolvePieceVfxGeometry(piece: ActivePieceState | undefined): {
+    readonly centerX: number;
+    readonly centerY: number;
+    readonly bottomY: number;
+    readonly color: VfxTint;
+    readonly cells: readonly SandifyVfxCell[];
+  } | undefined {
+    const transform = this.sandSprite?.node.getComponent(UITransform);
+    const rotation = piece?.definition.rotations[piece.rotation];
+    const paletteColor = piece === undefined ? undefined : DEFAULT_SAND_PALETTE[piece.color];
+    if (piece === undefined || rotation === undefined || paletteColor === undefined || transform === null || transform === undefined) {
+      return undefined;
+    }
+    const cellWidth = transform.contentSize.width / this.rules.macroWidth;
+    const cellHeight = transform.contentSize.height / this.rules.macroHeight;
+    const left = -transform.contentSize.width * transform.anchorX;
+    const top = transform.contentSize.height * (1 - transform.anchorY);
+    const cells = rotation.map((cell): SandifyVfxCell => ({
+      x: left + (piece.x + cell.x + 0.5) * cellWidth,
+      y: top - (piece.y + cell.y + 0.5) * cellHeight,
+      scaleX: cellWidth / 64,
+      scaleY: cellHeight / 64,
+    }));
+    const centerX = cells.reduce((sum, cell) => sum + cell.x, 0) / cells.length;
+    const centerY = cells.reduce((sum, cell) => sum + cell.y, 0) / cells.length;
+    const maxCellY = Math.max(...rotation.map((cell) => cell.y));
+    return {
+      centerX,
+      centerY,
+      bottomY: top - (piece.y + maxCellY + 1) * cellHeight,
+      color: paletteColor,
+      cells,
+    };
+  }
+
+  private emitClearVfx(pendingChain: number): void {
+    if (!this.session.copyClearMaskTo(this.clearMaskCells)) {
+      return;
+    }
+    const transform = this.sandSprite?.node.getComponent(UITransform);
+    if (transform === null || transform === undefined) {
+      return;
+    }
+    const board = this.session.getBoardSnapshot();
+    const width = this.session.boardWidth;
+    let minX = width;
+    let maxX = -1;
+    let minY = this.session.boardHeight;
+    let maxY = -1;
+    let colorId = 0;
+    for (let index = 0; index < this.clearMaskCells.length; index += 1) {
+      if (this.clearMaskCells[index] === 0) {
+        continue;
+      }
+      const x = index % width;
+      const y = Math.floor(index / width);
+      minX = Math.min(minX, x);
+      maxX = Math.max(maxX, x);
+      minY = Math.min(minY, y);
+      maxY = Math.max(maxY, y);
+      colorId ||= board[index] ?? 0;
+    }
+    if (maxX < minX || maxY < minY) {
+      return;
+    }
+    const grainWidth = transform.contentSize.width / this.session.boardWidth;
+    const grainHeight = transform.contentSize.height / this.session.boardHeight;
+    const left = -transform.contentSize.width * transform.anchorX;
+    const top = transform.contentSize.height * (1 - transform.anchorY);
+    const centerX = left + (minX + maxX + 1) * grainWidth / 2;
+    const centerY = top - (minY + maxY + 1) * grainHeight / 2;
+    const clearWidth = Math.max(64, (maxX - minX + 1) * grainWidth);
+    const baseColor = DEFAULT_SAND_PALETTE[colorId] ?? DEFAULT_SAND_PALETTE[1];
+    const color = pendingChain >= 4
+      ? { r: 181, g: 109, b: 255 }
+      : pendingChain === 3
+        ? { r: 255, g: 99, b: 107 }
+        : pendingChain === 2
+          ? { r: 255, g: 209, b: 92 }
+          : baseColor;
+    this.vfxController?.emitClear(centerX, centerY, clearWidth, color, pendingChain);
   }
 
   private onApplicationHide(): void {
@@ -2757,4 +3036,9 @@ function finiteRecordNumber(
 ): number | undefined {
   const value = record?.[key];
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function dangerMoteUnit(index: number, salt: number): number {
+  const value = Math.sin((index + 1) * 12.9898 + salt * 78.233) * 43758.5453;
+  return value - Math.floor(value);
 }
