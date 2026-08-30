@@ -240,25 +240,6 @@ export class CocosVfxController {
     this.emissionSequence += 1;
   }
 
-  public emitMoveTrail(x: number, y: number, color: VfxTint, direction: -1 | 1): void {
-    const scale = 0.46;
-    this.spawn({
-      frame: "comet-trail",
-      kind: "trail",
-      x: x - direction * 22,
-      y,
-      velocityX: -direction * 9,
-      startScaleX: direction * scale,
-      startScaleY: 0.42,
-      endScaleX: direction * 0.62,
-      endScaleY: 0.52,
-      startAlpha: 132,
-      duration: 0.17,
-      color,
-    });
-    this.emissionSequence += 1;
-  }
-
   public emitSandify(cells: readonly SandifyVfxCell[], color: VfxTint): void {
     cells.slice(0, 4).forEach((cell, index) => {
       this.spawn({
@@ -292,23 +273,6 @@ export class CocosVfxController {
         color,
       });
     });
-    if (cells.length > 0) {
-      const centerX = cells.reduce((sum, cell) => sum + cell.x, 0) / cells.length;
-      const centerY = cells.reduce((sum, cell) => sum + cell.y, 0) / cells.length;
-      this.spawn({
-        frame: "grain-flow",
-        kind: "trail",
-        x: centerX,
-        y: centerY,
-        startScaleX: 0.62,
-        startScaleY: 0.5,
-        endScaleX: 0.78,
-        endScaleY: 0.62,
-        startAlpha: 82,
-        duration: 0.24,
-        color,
-      });
-    }
     this.emissionSequence += 1;
   }
 
@@ -319,20 +283,6 @@ export class CocosVfxController {
     color: VfxTint,
     pendingChain: number,
   ): void {
-    const sweepScale = Math.max(0.65, Math.min(1.15, width / 256));
-    this.spawn({
-      frame: "clear-sweep",
-      kind: "trail",
-      x,
-      y,
-      startScaleX: sweepScale * 0.86,
-      startScaleY: 0.48,
-      endScaleX: sweepScale,
-      endScaleY: 0.7,
-      startAlpha: Math.min(184, 142 + pendingChain * 12),
-      duration: 0.24,
-      color,
-    });
     this.spawn({
       frame: "pulse-ring",
       kind: "halo",

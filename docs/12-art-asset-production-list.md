@@ -170,8 +170,10 @@ distribution/art/              # 平台图标、分享图、宣传图，不进�
 - [x] `ART-E02` 柔光光斑与光环贴图（`G+`）
   - 用于消除、连锁和等级提升，避免预烘焙具体颜色。
   - 已输出 [光斑/光环规范板](../art-source/concepts/art-e02-glow-halo-system.png)、[实际尺寸检查](../art-source/concepts/art-e02-glow-halo-size-check.png)与[距离场/混合/性能预算规范](../art-source/briefs/ART-E02-glow-halo-system.md)：核心光斑为 `64×64`，分段脉冲环和阶梯菱形环为 `128×128`，均使用可由 Cocos 着色的白色 alpha 与量化像素衰减；已在 E06 用于落地、消除和升级反馈。
-- [x] `ART-E03` 横向流光/拖尾贴图（`G+`）
-  - 已输出 [横向流光/拖尾规范板](../art-source/concepts/art-e03-horizontal-trail-system.png)、[实际尺寸检查](../art-source/concepts/art-e03-horizontal-trail-size-check.png)与[轨道/翻转/性能预算规范](../art-source/briefs/ART-E03-horizontal-trail-system.md)：`256×32` 双向消除扫光、`128×32` 单向彗尾和 `128×24` 稀疏砂粒流线均为白色 alpha，可由 Cocos 着色；右向纹理通过水平翻转复用，已在 E06 接入移动、沙化和消除事件。
+- [-] `ART-E03` 横向流光/拖尾贴图（`G+`）——已废弃，`2026-08-30` 从运行时移除
+  - 曾输出 [横向流光/拖尾规范板](../art-source/concepts/art-e03-horizontal-trail-system.png)、[实际尺寸检查](../art-source/concepts/art-e03-horizontal-trail-size-check.png)与[轨道/翻转/性能预算规范](../art-source/briefs/ART-E03-horizontal-trail-system.md)：`256×32` 双向消除扫光、`128×32` 单向彗尾和 `128×24` 稀疏砂粒流线。
+  - 真机实测三种拖尾观感均不理想，`2026-08-30` 从运行时下线：`clear-sweep`、`comet-trail`、`grain-flow` 三个精灵已移出 `REQUIRED_VFX_SPRITES` 与两份图集布局，`VfxKind` 的 `trail` 分类和对应预算一并删除，移动事件不再发射任何特效。消除保留脉冲环与爆散粒子，沙化保留噪声与砂粒粒子。
+  - 概念图、规范文档和 `render-art-e03-horizontal-trails.cjs` 生成脚本保留备查；`luosha-vfx-atlas.png` 仍物理保留这三块像素，待下次 E06 重新合图时一并清除。
 - [x] `ART-E04` 沙化细碎纹理或噪声图（`G+`）
   - 已输出 [沙化细碎纹理规范板](../art-source/concepts/art-e04-sand-dissolve-texture-system.png)、[实际尺寸与平铺检查](../art-source/concepts/art-e04-sand-dissolve-size-check.png)与[阈值/采样/材质合同](../art-source/briefs/ART-E04-sand-dissolve-textures.md)：细粒阈值图与聚块阈值图均为 `64×64` 可平铺白色 alpha，使用 16 档稳定排名和 nearest 采样，并各保留 `128×128` 二倍归档；已在 E06 以同图集 Sprite Alpha 蒙版接入沙化过渡。
 - [x] `ART-E05` 顶部危险区域动态效果（`C`）
@@ -180,6 +182,7 @@ distribution/art/              # 平台图标、分享图、宣传图，不进�
 - [x] `ART-E06` 特效图集与 Cocos 实装（`C`）
   - 合并小图、减少 Draw Call，限制同屏粒子数量。
   - 已完成 [特效图集与 Cocos 实装规范](../art-source/briefs/ART-E06-vfx-atlas-cocos-integration.md)及 [512×256 图集评审板](../art-source/concepts/art-e06-vfx-atlas-system.png)：E01～E04 的 12 枚白色 Alpha 素材合并为单纹理，固定使用 nearest、clamp 与无 mipmap；运行时预建 31 个 Sprite 节点，预算为粒子 24、光环 4、拖尾 3，并接入移动、落地、硬降、沙化、消除和升级事件。新增 5 项图集/预算测试，完整 128 项测试、Cocos Creator 3.8.8 Web Mobile 构建及 `390×844` 浏览器复验通过。
+  - `2026-08-30` 随 E03 下线调整：图集布局由 12 枚精灵减至 9 枚，运行时预建节点由 `31` 降至 `28`，预算改为粒子 `24`、光环 `4`；移动事件不再发射特效。图集纹理本身仍为 `512×256`，三块废弃像素待下次重新合图时清除。
 - [ ] `ART-E07` 低端机性能与光敏感性验收
   - 微信、抖音真机检查帧率、闪光强度和长时间游玩舒适度。
 

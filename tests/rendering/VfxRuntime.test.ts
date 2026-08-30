@@ -16,9 +16,7 @@ function validLayout(): unknown {
       height: 8,
       kind: name.includes("halo") || name.includes("ring") || name === "glow-core"
         ? "halo"
-        : name.includes("trail") || name.includes("sweep") || name === "grain-flow"
-          ? "trail"
-          : "particle",
+        : "particle",
     };
   });
   return { version: 1, width: 128, height: 16, padding: 0, sprites };
@@ -49,31 +47,31 @@ describe("parseVfxAtlasLayout", () => {
 
 describe("VfxBudget", () => {
   it("enforces category and total limits", () => {
-    const budget = new VfxBudget({ total: 3, particle: 2, halo: 1, trail: 1 });
+    const budget = new VfxBudget({ total: 3, particle: 2, halo: 1 });
 
     expect(budget.acquire("particle")).toBe(true);
     expect(budget.acquire("particle")).toBe(true);
     expect(budget.acquire("particle")).toBe(false);
     expect(budget.acquire("halo")).toBe(true);
-    expect(budget.acquire("trail")).toBe(false);
+    expect(budget.acquire("halo")).toBe(false);
     expect(budget.total).toBe(3);
   });
 
   it("releases and resets slots deterministically", () => {
-    const budget = new VfxBudget({ total: 2, particle: 1, halo: 1, trail: 1 });
+    const budget = new VfxBudget({ total: 2, particle: 1, halo: 1 });
     budget.acquire("particle");
     budget.acquire("halo");
 
     budget.release("particle");
     expect(budget.count("particle")).toBe(0);
-    expect(budget.acquire("trail")).toBe(true);
+    expect(budget.acquire("particle")).toBe(true);
     budget.reset();
     expect(budget.total).toBe(0);
     expect(() => budget.release("halo")).toThrow();
   });
 
   it("validates impossible budgets", () => {
-    expect(() => new VfxBudget({ total: 4, particle: 1, halo: 1, trail: 1 })).toThrow();
-    expect(() => new VfxBudget({ total: -1, particle: 0, halo: 0, trail: 0 })).toThrow();
+    expect(() => new VfxBudget({ total: 4, particle: 1, halo: 1 })).toThrow();
+    expect(() => new VfxBudget({ total: -1, particle: 0, halo: 0 })).toThrow();
   });
 });

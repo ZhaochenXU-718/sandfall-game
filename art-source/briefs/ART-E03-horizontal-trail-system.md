@@ -1,6 +1,8 @@
 # ART-E03：横向流光 / 拖尾贴图
 
-状态：已完成 ImageGen 动势参考、确定性分段轨道、白色 alpha 导出和实际尺寸检查；正式尺寸已在 `ART-E06` 合图并接入移动、沙化和消除事件。
+> **状态：已废弃（`2026-08-30`）。** 三种拖尾在真机实测中观感不佳，已从运行时下线：`clear-sweep`、`comet-trail`、`grain-flow` 移出 `REQUIRED_VFX_SPRITES` 与两份图集布局，`VfxKind` 的 `trail` 分类及预算删除，`emitMoveTrail` 一并移除（移动事件现在只有触感与音效反馈）。本文档与概念图、`render-art-e03-horizontal-trails.cjs` 保留备查，如需重做拖尾可从这里起步。以下为原始规范。
+
+原状态：已完成 ImageGen 动势参考、确定性分段轨道、白色 alpha 导出和实际尺寸检查；正式尺寸已在 `ART-E06` 合图并接入移动、沙化和消除事件。
 
 规范板：[E03 横向流光 / 拖尾系统](../concepts/art-e03-horizontal-trail-system.png)
 

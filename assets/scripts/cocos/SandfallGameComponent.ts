@@ -69,6 +69,14 @@ const { ccclass, property } = _decorator;
 const CLASSIC_MIN_COLOR_COUNT = 2;
 const CLASSIC_MAX_COLOR_COUNT = 5;
 const CLASSIC_FALL_INTERVALS_MS = [900, 750, 600, 500, 400, 300] as const;
+// The paused card shows 继续 / 重新开始 / 返回首页 in a single row, so its buttons
+// are narrower than the two-button game over row.
+const PAUSED_MODAL_BUTTON_WIDTH = 82;
+const PAUSED_MODAL_BUTTON_SPACING = 88;
+// Four-character Chinese labels sit beside an icon on the game over row, so both
+// buttons there share one wider size.
+const GAME_OVER_MODAL_BUTTON_WIDTH = 112;
+const GAME_OVER_MODAL_BUTTON_SPACING = 62;
 
 interface HomeGrainParticle {
   readonly x: number;
@@ -88,7 +96,7 @@ interface UiButtonVisual {
   readonly visualNode: Node;
   readonly background: Graphics;
   readonly label: Label;
-  readonly width: number;
+  width: number;
   readonly height: number;
   readonly cut: number;
   readonly accentDefault: boolean;
@@ -190,6 +198,8 @@ export class SandfallGameComponent extends Component {
   private modalActionVisual: UiButtonVisual | null = null;
   private modalHomeNode: Node | null = null;
   private modalHomeVisual: UiButtonVisual | null = null;
+  private modalRestartNode: Node | null = null;
+  private modalRestartVisual: UiButtonVisual | null = null;
   private modalHintLabel: Label | null = null;
   private modalBackdrop: Graphics | null = null;
   private modalCardNode: Node | null = null;
@@ -375,7 +385,7 @@ export class SandfallGameComponent extends Component {
     panelNode.addChild(labelNode);
     labelNode.addComponent(UITransform).setContentSize(76, 20);
     const label = labelNode.addComponent(Label);
-    label.string = "NEXT";
+    label.string = "下一个";
     label.fontSize = 13;
     label.lineHeight = 18;
     label.color = new Color(180, 194, 219, 255);
@@ -403,12 +413,12 @@ export class SandfallGameComponent extends Component {
 
     this.scoreLabel = this.createLabel(panelNode, "ScoreLabel", 0, 23, 100, 32, 14);
     this.scoreLabel.horizontalAlign = HorizontalTextAlignment.LEFT;
-    this.scoreLabel.string = "SCORE  000000";
+    this.scoreLabel.string = "得分  000000";
     this.scoreLabel.color = new Color(238, 243, 255, 255);
 
     this.timeLabel = this.createLabel(panelNode, "TimeLabel", 0, -9, 100, 28, 13);
     this.timeLabel.horizontalAlign = HorizontalTextAlignment.LEFT;
-    this.timeLabel.string = "TIME   00:00";
+    this.timeLabel.string = "时间  00:00";
     this.timeLabel.color = new Color(180, 194, 219, 255);
 
     this.chainLabel = this.createLabel(panelNode, "ChainLabel", 0, -34, 100, 20, 12);
@@ -436,7 +446,7 @@ export class SandfallGameComponent extends Component {
     this.scoreFeedbackLabel.color = new Color(255, 222, 102, 255);
     this.scoreFeedbackLabel.node.active = false;
 
-    const pauseButton = this.createButton(this.node, "PauseButton", 0, 367, 48, 38, "Ⅱ", true);
+    const pauseButton = this.createButton(this.node, "PauseButton", 0, 367, 48, 38, "暂停", true);
     this.pauseButtonNode = pauseButton.node;
     this.pauseButtonLabel = pauseButton.label;
     this.pauseButtonVisual = pauseButton;
@@ -482,19 +492,26 @@ export class SandfallGameComponent extends Component {
     this.modalSummaryLabel.lineHeight = 24;
     this.modalSummaryLabel.color = new Color(194, 207, 230, 255);
 
-    const action = this.createButton(cardNode, "ModalAction", 0, -67, 112, 48, "PLAY AGAIN");
+    const action = this.createButton(cardNode, "ModalAction", 0, -67, GAME_OVER_MODAL_BUTTON_WIDTH, 48, "再来一局");
     this.modalActionNode = action.node;
     this.modalActionLabel = action.label;
     this.modalActionVisual = action;
     this.createButtonIcon(action, "ModalActionIcon", 22, -42);
     action.node.on(Node.EventType.TOUCH_END, this.onModalAction, this);
 
-    const home = this.createButton(cardNode, "ModalHome", 72, -67, 96, 48, "HOME");
+    // layoutModalButtons owns the row positions; these are placeholders.
+    const home = this.createButton(cardNode, "ModalHome", 0, -67, GAME_OVER_MODAL_BUTTON_WIDTH, 48, "返回首页");
     this.modalHomeNode = home.node;
     this.modalHomeVisual = home;
-    this.createButtonIcon(home, "ModalHomeIcon", 22, -30);
+    this.createButtonIcon(home, "ModalHomeIcon", 22, -42);
     home.node.on(Node.EventType.TOUCH_END, this.onModalHome, this);
     home.node.active = false;
+
+    const restart = this.createButton(cardNode, "ModalRestart", 0, -67, PAUSED_MODAL_BUTTON_WIDTH, 48, "重新开始");
+    this.modalRestartNode = restart.node;
+    this.modalRestartVisual = restart;
+    restart.node.on(Node.EventType.TOUCH_END, this.onModalRestart, this);
+    restart.node.active = false;
 
     this.modalHintLabel = this.createLabel(cardNode, "ModalHint", 0, -119, 240, 24, 12);
     this.modalHintLabel.color = new Color(130, 148, 181, 255);
@@ -580,11 +597,11 @@ export class SandfallGameComponent extends Component {
     start.node.on(Node.EventType.TOUCH_END, this.onHomeStartButton, this);
 
     const hint = this.createLabel(contentNode, "HomeHint", 0, -345, 300, 22, 11);
-    hint.string = "选择模式后开始  ·  SPACE / ENTER 快速开始";
+    hint.string = "选择模式后点击开始";
     hint.color = new Color(111, 142, 177, 255);
 
     const version = this.createLabel(contentNode, "HomeVersion", 0, -374, 180, 20, 10);
-    version.string = "SANDFALL  ·  PROTOTYPE 0.1";
+    version.string = "落沙  ·  测试版 0.1";
     version.color = new Color(70, 99, 132, 255);
     this.refreshHomeModeControls();
     this.loadHomeArtAssets();
@@ -716,13 +733,13 @@ export class SandfallGameComponent extends Component {
       this.pauseButtonVisual.label.node.active = pauseFrame === null;
     }
 
-    const actionFrame = paused
-      ? this.resumeIconFrame
-      : gameOver
-        ? this.restartIconFrame
-        : null;
+    this.layoutModalButtons(paused);
+
+    // Three buttons share the paused row, leaving no room beside a label for an
+    // icon, so the paused card runs on text alone.
+    const actionFrame = paused ? null : gameOver ? this.restartIconFrame : null;
     this.applyButtonIconLayout(this.modalActionVisual, actionFrame, 12, 80);
-    this.applyButtonIconLayout(this.modalHomeVisual, this.homeIconFrame, 10, 58);
+    this.applyButtonIconLayout(this.modalHomeVisual, paused ? null : this.homeIconFrame, 12, 80);
 
     if (this.modalDecorationSprite !== null) {
       const decorationFrame = paused
@@ -733,6 +750,37 @@ export class SandfallGameComponent extends Component {
       this.modalDecorationSprite.spriteFrame = decorationFrame;
       this.modalDecorationSprite.node.active = decorationFrame !== null;
     }
+  }
+
+  private layoutModalButtons(paused: boolean): void {
+    if (this.modalRestartNode !== null) {
+      this.modalRestartNode.active = paused;
+    }
+    if (this.modalHomeNode !== null) {
+      this.modalHomeNode.active = true;
+    }
+    if (paused) {
+      this.resizeButton(this.modalActionVisual, PAUSED_MODAL_BUTTON_WIDTH);
+      this.resizeButton(this.modalHomeVisual, PAUSED_MODAL_BUTTON_WIDTH);
+      this.modalActionNode?.setPosition(-PAUSED_MODAL_BUTTON_SPACING, -67);
+      this.modalRestartNode?.setPosition(0, -67);
+      this.modalHomeNode?.setPosition(PAUSED_MODAL_BUTTON_SPACING, -67);
+      return;
+    }
+    this.resizeButton(this.modalActionVisual, GAME_OVER_MODAL_BUTTON_WIDTH);
+    this.resizeButton(this.modalHomeVisual, GAME_OVER_MODAL_BUTTON_WIDTH);
+    this.modalActionNode?.setPosition(-GAME_OVER_MODAL_BUTTON_SPACING, -67);
+    this.modalHomeNode?.setPosition(GAME_OVER_MODAL_BUTTON_SPACING, -67);
+  }
+
+  private resizeButton(button: UiButtonVisual | null, width: number): void {
+    if (button === null || button.width === width) {
+      return;
+    }
+    button.width = width;
+    button.node.getComponent(UITransform)?.setContentSize(width, button.height);
+    button.visualNode.getComponent(UITransform)?.setContentSize(width, button.height);
+    this.setButtonVisualState(button, button.baseState);
   }
 
   private applyButtonIconLayout(
@@ -869,7 +917,7 @@ export class SandfallGameComponent extends Component {
       64,
       13,
     );
-    progressiveLabel.string = "每 5 次消除升级并加速\nLV4 解锁第 5 色  ·  LV6 速度封顶";
+    progressiveLabel.string = "每 5 次消除升级并加速\n等级 4 解锁第 5 色  ·  等级 6 速度封顶";
     progressiveLabel.lineHeight = 23;
     progressiveLabel.color = new Color(167, 205, 232, 255);
 
@@ -966,12 +1014,12 @@ export class SandfallGameComponent extends Component {
     }
     if (this.homeClassicSpeedValueLabel !== null) {
       const interval = CLASSIC_FALL_INTERVALS_MS[this.classicSpeedIndex];
-      this.homeClassicSpeedValueLabel.string = `${this.classicSpeedIndex + 1}/6 · ${interval}ms`;
+      this.homeClassicSpeedValueLabel.string = `${this.classicSpeedIndex + 1}/6 · ${interval}毫秒`;
     }
     if (this.homeStartButtonLabel !== null) {
       this.homeStartButtonLabel.string = this.selectedGameMode === "progressive"
-        ? "▶  开始进阶模式"
-        : "▶  开始经典休闲";
+        ? "开始进阶模式"
+        : "开始经典休闲";
     }
   }
 
@@ -1390,7 +1438,7 @@ export class SandfallGameComponent extends Component {
     background.fill();
 
     const label = this.createLabel(buttonNode, "HomeStartButtonLabel", 0, 0, width - 28, height - 8, 22);
-    label.string = "▶  开始进阶模式";
+    label.string = "开始进阶模式";
     label.lineHeight = 28;
     label.color = new Color(48, 34, 4, 255);
     return { node: buttonNode, label };
@@ -2015,23 +2063,20 @@ export class SandfallGameComponent extends Component {
   private renderHudAndModal(deltaTime: number): void {
     this.updateScoreFeedback(deltaTime);
     if (this.scoreLabel !== null) {
-      this.scoreLabel.string = `SCORE  ${this.formatScore(this.session.score)}`;
+      this.scoreLabel.string = `得分  ${this.formatScore(this.session.score)}`;
     }
     if (this.timeLabel !== null) {
-      this.timeLabel.string = `TIME   ${this.formatTime(this.session.elapsedMilliseconds)}`;
+      this.timeLabel.string = `时间  ${this.formatTime(this.session.elapsedMilliseconds)}`;
     }
     if (this.chainLabel !== null) {
       if (this.session.mode === "classic") {
         this.chainLabel.string = this.session.chainLevel > 0
-          ? `CL  ·  CHAIN ×${this.session.chainLevel}`
-          : `CLASSIC  ·  ${this.session.activeColorCount}C`;
+          ? `经典  连锁×${this.session.chainLevel}`
+          : `经典  ${this.session.activeColorCount} 色`;
       } else {
-        const chain = this.session.chainLevel > 0
-          ? `  CHAIN ×${this.session.chainLevel}`
-          : "";
-        this.chainLabel.string = chain === ""
-          ? `LEVEL ${this.session.level}`
-          : `LV ${this.session.level}${chain}`;
+        this.chainLabel.string = this.session.chainLevel > 0
+          ? `等级${this.session.level}  连锁×${this.session.chainLevel}`
+          : `等级 ${this.session.level}`;
       }
     }
 
@@ -2044,36 +2089,33 @@ export class SandfallGameComponent extends Component {
     this.setGameplayChromeVisible(phase !== "Idle");
     if (phase === "Idle") {
       modal.active = false;
-      if (this.pauseButtonLabel !== null) this.pauseButtonLabel.string = "Ⅱ";
+      if (this.pauseButtonLabel !== null) this.pauseButtonLabel.string = "暂停";
       return;
     }
     if (phase !== "Paused" && phase !== "GameOver") {
       modal.active = false;
       if (this.pauseButtonLabel !== null) {
-        this.pauseButtonLabel.string = "Ⅱ";
+        this.pauseButtonLabel.string = "暂停";
       }
       return;
     }
 
     modal.active = true;
     if (phase === "Paused") {
-      this.modalHomeNode?.setPosition(72, -67);
-      if (this.modalHomeNode !== null) this.modalHomeNode.active = false;
-      this.modalActionNode?.setPosition(0, -67);
-      if (this.modalTitleLabel !== null) this.modalTitleLabel.string = "PAUSED";
+      if (this.modalTitleLabel !== null) this.modalTitleLabel.string = "已暂停";
       if (this.modalSummaryLabel !== null) {
         const difficulty = this.session.mode === "progressive"
-          ? `LEVEL  ${this.session.level}`
-          : `CLASSIC  ${this.session.activeColorCount} COLORS`;
+          ? `等级 ${this.session.level}`
+          : `经典 ${this.session.activeColorCount} 色`;
         this.modalSummaryLabel.string = [
-          `SCORE   ${this.formatScore(this.session.score)}`,
-          `TIME    ${this.formatTime(this.session.elapsedMilliseconds)}    ${difficulty}`,
-          `BEST    ${this.formatScore(this.highScoreStore.value)}`,
+          `得分   ${this.formatScore(this.session.score)}`,
+          `时间   ${this.formatTime(this.session.elapsedMilliseconds)}    ${difficulty}`,
+          `最高   ${this.formatScore(this.highScoreStore.value)}`,
         ].join("\n");
       }
-      if (this.modalActionLabel !== null) this.modalActionLabel.string = "RESUME";
-      if (this.modalHintLabel !== null) this.modalHintLabel.string = "P / ESC 继续游戏";
-      if (this.pauseButtonLabel !== null) this.pauseButtonLabel.string = "▶";
+      if (this.modalActionLabel !== null) this.modalActionLabel.string = "继续";
+      if (this.modalHintLabel !== null) this.modalHintLabel.string = "";
+      if (this.pauseButtonLabel !== null) this.pauseButtonLabel.string = "继续";
       return;
     }
 
@@ -2081,22 +2123,20 @@ export class SandfallGameComponent extends Component {
       this.highScoreStore.record(this.session.score);
       this.gameOverRecorded = true;
     }
-    if (this.modalHomeNode !== null) this.modalHomeNode.active = true;
-    this.modalActionNode?.setPosition(-58, -67);
-    if (this.modalTitleLabel !== null) this.modalTitleLabel.string = "GAME OVER";
+    if (this.modalTitleLabel !== null) this.modalTitleLabel.string = "游戏结束";
     if (this.modalSummaryLabel !== null) {
       const difficulty = this.session.mode === "progressive"
-        ? `LEVEL  ${this.session.level}`
-        : `CLASSIC  ${this.session.activeColorCount} COLORS`;
+        ? `等级 ${this.session.level}`
+        : `经典 ${this.session.activeColorCount} 色`;
       this.modalSummaryLabel.string = [
-        `SCORE   ${this.formatScore(this.session.score)}    BEST  ${this.formatScore(this.highScoreStore.value)}`,
-        `TIME    ${this.formatTime(this.session.elapsedMilliseconds)}    ${difficulty}`,
-        `CLEARS  ${this.session.clearCount}    MAX CHAIN  ×${this.session.maxChain}`,
+        `得分   ${this.formatScore(this.session.score)}    最高  ${this.formatScore(this.highScoreStore.value)}`,
+        `时间   ${this.formatTime(this.session.elapsedMilliseconds)}    ${difficulty}`,
+        `消除   ${this.session.clearCount}    最大连锁 ×${this.session.maxChain}`,
       ].join("\n");
     }
-    if (this.modalActionLabel !== null) this.modalActionLabel.string = "PLAY AGAIN";
-    if (this.modalHintLabel !== null) this.modalHintLabel.string = "R 重新开始";
-    if (this.pauseButtonLabel !== null) this.pauseButtonLabel.string = "Ⅱ";
+    if (this.modalActionLabel !== null) this.modalActionLabel.string = "再来一局";
+    if (this.modalHintLabel !== null) this.modalHintLabel.string = "";
+    if (this.pauseButtonLabel !== null) this.pauseButtonLabel.string = "暂停";
   }
 
   private renderHomeScreen(deltaTime: number): void {
@@ -2178,8 +2218,8 @@ export class SandfallGameComponent extends Component {
       this.scorePulseElapsedSeconds = 0;
       if (this.scoreFeedbackLabel !== null) {
         this.scoreFeedbackLabel.string = colorCount > this.lastRenderedColorCount
-          ? `LEVEL ${level}  ·  NEW COLOR`
-          : `LEVEL ${level}  ·  SPEED UP`;
+          ? `等级 ${level}  ·  解锁新颜色`
+          : `等级 ${level}  ·  速度提升`;
         this.scoreFeedbackLabel.node.active = true;
       }
     } else if (chainLevel >= 2 && chainLevel > this.lastRenderedChainLevel) {
@@ -2191,7 +2231,7 @@ export class SandfallGameComponent extends Component {
       this.scoreFeedbackChainLevel = chainLevel;
       this.scorePulseElapsedSeconds = 0;
       if (this.scoreFeedbackLabel !== null) {
-        this.scoreFeedbackLabel.string = `CHAIN ×${chainLevel}  ·  +${added}`;
+        this.scoreFeedbackLabel.string = `连锁 ×${chainLevel}  ·  +${added}`;
         this.scoreFeedbackLabel.node.active = true;
       }
     } else if (score > this.lastRenderedScore) {
@@ -2761,11 +2801,22 @@ export class SandfallGameComponent extends Component {
     }
   }
 
-  private onModalHome(): void {
-    if (this.session.phase !== "GameOver") {
+  private onModalRestart(): void {
+    if (this.session.phase !== "Paused" && this.session.phase !== "GameOver") {
       return;
     }
     this.feedback.unlock();
+    this.startNewGame();
+  }
+
+  private onModalHome(): void {
+    if (this.session.phase !== "Paused" && this.session.phase !== "GameOver") {
+      return;
+    }
+    this.feedback.unlock();
+    // Pausing suspends the BGM, so leaving a paused game for the home screen
+    // has to lift that suspension or the next session starts silent.
+    this.feedback.resume();
     this.rules = this.createRulesForSelectedMode();
     this.session = new GameSession({ rules: this.rules, mode: this.selectedGameMode });
     this.runner.reset();
@@ -2783,15 +2834,6 @@ export class SandfallGameComponent extends Component {
     const moved = direction === -1 ? this.session.moveLeft() : this.session.moveRight();
     if (moved) {
       this.feedback.trigger("move");
-      const geometry = this.resolvePieceVfxGeometry(this.session.activePiece);
-      if (geometry !== undefined) {
-        this.vfxController?.emitMoveTrail(
-          geometry.centerX,
-          geometry.centerY,
-          geometry.color,
-          direction,
-        );
-      }
     }
     return moved;
   }

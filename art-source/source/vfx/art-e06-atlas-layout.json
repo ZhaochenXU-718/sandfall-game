@@ -4,9 +4,6 @@
   "height": 256,
   "padding": 4,
   "sprites": {
-    "clear-sweep": { "source": "luosha-streak-clear-sweep-256x32.png", "x": 4, "y": 4, "width": 256, "height": 32, "kind": "trail" },
-    "comet-trail": { "source": "luosha-trail-comet-128x32.png", "x": 264, "y": 4, "width": 128, "height": 32, "kind": "trail" },
-    "grain-flow": { "source": "luosha-trail-grain-flow-128x24.png", "x": 4, "y": 40, "width": 128, "height": 24, "kind": "trail" },
     "dust-impact": { "source": "luosha-particle-dust-impact-32.png", "x": 136, "y": 40, "width": 32, "height": 32, "kind": "particle" },
     "dust-rise": { "source": "luosha-particle-dust-rise-32.png", "x": 172, "y": 40, "width": 32, "height": 32, "kind": "particle" },
     "dust-burst": { "source": "luosha-particle-dust-burst-32.png", "x": 208, "y": 40, "width": 32, "height": 32, "kind": "particle" },

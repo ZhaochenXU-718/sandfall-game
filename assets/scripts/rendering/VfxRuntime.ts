@@ -1,9 +1,6 @@
-export type VfxKind = "particle" | "halo" | "trail";
+export type VfxKind = "particle" | "halo";
 
 export const REQUIRED_VFX_SPRITES = Object.freeze([
-  "clear-sweep",
-  "comet-trail",
-  "grain-flow",
   "dust-impact",
   "dust-rise",
   "dust-burst",
@@ -38,14 +35,12 @@ export interface VfxBudgetLimits {
   readonly total: number;
   readonly particle: number;
   readonly halo: number;
-  readonly trail: number;
 }
 
 export const DEFAULT_VFX_BUDGET: Readonly<VfxBudgetLimits> = Object.freeze({
-  total: 31,
+  total: 28,
   particle: 24,
   halo: 4,
-  trail: 3,
 });
 
 export class VfxBudget {
@@ -54,16 +49,15 @@ export class VfxBudget {
   private readonly counts: Record<VfxKind, number> = {
     particle: 0,
     halo: 0,
-    trail: 0,
   };
 
   public constructor(limits: Readonly<VfxBudgetLimits> = DEFAULT_VFX_BUDGET) {
-    for (const value of [limits.total, limits.particle, limits.halo, limits.trail]) {
+    for (const value of [limits.total, limits.particle, limits.halo]) {
       if (!Number.isInteger(value) || value < 0) {
         throw new RangeError("VFX budget limits must be non-negative integers");
       }
     }
-    if (limits.particle + limits.halo + limits.trail < limits.total) {
+    if (limits.particle + limits.halo < limits.total) {
       throw new RangeError("VFX category limits cannot be smaller than the total limit");
     }
     this.limits = limits;
@@ -90,7 +84,6 @@ export class VfxBudget {
     this.totalCount = 0;
     this.counts.particle = 0;
     this.counts.halo = 0;
-    this.counts.trail = 0;
   }
 
   public get total(): number {
@@ -114,7 +107,7 @@ export function parseVfxAtlasLayout(value: unknown): VfxAtlasLayout {
   for (const name of REQUIRED_VFX_SPRITES) {
     const raw = record(rawSprites[name], `atlas sprite ${name}`);
     const kind = raw.kind;
-    if (kind !== "particle" && kind !== "halo" && kind !== "trail") {
+    if (kind !== "particle" && kind !== "halo") {
       throw new TypeError(`Invalid VFX kind for ${name}`);
     }
     const source = raw.source;
