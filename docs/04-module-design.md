@@ -235,7 +235,7 @@ interface RulesConfig {
 
 `CocosFeedbackController` 目前管理循环 BGM、单次音效、冷却限流和生命周期；首次玩家输入后才启动 BGM，以满足 Web 自动播放限制。移动、旋转、落地、硬降、沙化、普通消除、连锁、Game Over 和 UI 操作均有独立提示音。
 
-`PlatformHapticsService` 优先调用微信 `wx.vibrateShort` 或抖音 `tt.vibrateShort`，Web 环境回退到 `navigator.vibrate`；不支持或调用失败时静默跳过。BGM、音效和震动分别使用 `sandfall.feedback.v1` 保存开关，默认开启，表现反馈不得影响核心规则和计分。
+`PlatformHapticsService` 优先调用微信 `wx.vibrateShort` 或抖音 `tt.vibrateShort`，Web 环境回退到 `navigator.vibrate`；轻、中、重反馈分别使用 1、2、3 次短脉冲，沙粒化则在 180ms 动画内使用 4 次不均匀短脉冲模拟颗粒感。新的反馈会取消旧脉冲的余波，避免连续事件叠成长震。抖音接口不传递其不支持的强度参数，改由脉冲次数和间隔表达触感。不支持或调用失败时静默跳过。BGM、音效和震动分别使用 `sandfall.feedback.v1` 保存开关，默认开启，表现反馈不得影响核心规则和计分。
 
 ## 7. Persistence 模块
 

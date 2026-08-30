@@ -26,6 +26,7 @@ interface CueConfig {
   readonly volume: number;
   readonly cooldownMs: number;
   readonly haptic?: HapticStrength;
+  readonly sandifyTexture?: boolean;
 }
 
 const BGM_PATH = "audio/bgm-loop";
@@ -39,7 +40,12 @@ const CUE_CONFIG: Readonly<Record<FeedbackCue, CueConfig>> = Object.freeze({
     cooldownMs: 120,
     haptic: "medium",
   },
-  sandify: { path: "audio/sandify", volume: 0.34, cooldownMs: 120 },
+  sandify: {
+    path: "audio/sandify",
+    volume: 0.34,
+    cooldownMs: 120,
+    sandifyTexture: true,
+  },
   clear: { path: "audio/clear", volume: 0.56, cooldownMs: 240, haptic: "light" },
   "clear-chain": {
     path: "audio/clear-chain",
@@ -53,7 +59,7 @@ const CUE_CONFIG: Readonly<Record<FeedbackCue, CueConfig>> = Object.freeze({
     cooldownMs: 800,
     haptic: "heavy",
   },
-  ui: { path: "audio/ui", volume: 0.3, cooldownMs: 60 },
+  ui: { path: "audio/ui", volume: 0.3, cooldownMs: 60, haptic: "light" },
 });
 
 /** Cocos audio host plus platform-aware haptic feedback. */
@@ -125,8 +131,12 @@ export class CocosFeedbackController {
     }
     const config = CUE_CONFIG[cue];
     const haptic = hapticOverride ?? config.haptic;
-    if (this.settings.hapticsEnabled && haptic !== undefined) {
-      this.haptics.vibrate(haptic);
+    if (this.settings.hapticsEnabled) {
+      if (config.sandifyTexture === true) {
+        this.haptics.playSandifyTexture();
+      } else if (haptic !== undefined) {
+        this.haptics.vibrate(haptic);
+      }
     }
     if (!this.settings.sfxEnabled) {
       return;
