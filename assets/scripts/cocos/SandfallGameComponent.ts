@@ -36,6 +36,10 @@ import {
 import { HighScoreStore, type StringStorage } from "../application/HighScoreStore";
 import { InputAutoRepeat } from "../application/InputAutoRepeat";
 import {
+  createLeaderboardService,
+  type LeaderboardService,
+} from "../platform/LeaderboardService";
+import {
   DEFAULT_RULES,
   type GameMode,
   type RulesConfig,
@@ -69,14 +73,13 @@ const { ccclass, property } = _decorator;
 const CLASSIC_MIN_COLOR_COUNT = 2;
 const CLASSIC_MAX_COLOR_COUNT = 5;
 const CLASSIC_FALL_INTERVALS_MS = [900, 750, 600, 500, 400, 300] as const;
-// The paused card shows 继续 / 重新开始 / 返回首页 in a single row, so its buttons
-// are narrower than the two-button game over row.
-const PAUSED_MODAL_BUTTON_WIDTH = 82;
-const PAUSED_MODAL_BUTTON_SPACING = 88;
-// Four-character Chinese labels sit beside an icon on the game over row, so both
-// buttons there share one wider size.
-const GAME_OVER_MODAL_BUTTON_WIDTH = 112;
-const GAME_OVER_MODAL_BUTTON_SPACING = 62;
+// Paused always shows three buttons; game over does too once a ranking host is
+// present. Three across leaves no room for an icon beside a four-character label.
+const THREE_BUTTON_MODAL_WIDTH = 82;
+const THREE_BUTTON_MODAL_SPACING = 88;
+// Two buttons fit four-character labels beside their icons at this wider size.
+const TWO_BUTTON_MODAL_WIDTH = 112;
+const TWO_BUTTON_MODAL_SPACING = 62;
 
 interface HomeGrainParticle {
   readonly x: number;
@@ -200,6 +203,8 @@ export class SandfallGameComponent extends Component {
   private modalHomeVisual: UiButtonVisual | null = null;
   private modalRestartNode: Node | null = null;
   private modalRestartVisual: UiButtonVisual | null = null;
+  private modalRankingNode: Node | null = null;
+  private modalRankingVisual: UiButtonVisual | null = null;
   private modalHintLabel: Label | null = null;
   private modalBackdrop: Graphics | null = null;
   private modalCardNode: Node | null = null;
@@ -234,6 +239,7 @@ export class SandfallGameComponent extends Component {
   private homeHeroImpulse = 0;
   private readonly homeHeroBaseY = 42;
   private feedback!: CocosFeedbackController;
+  private leaderboard: LeaderboardService = createLeaderboardService();
   private highScoreStore!: HighScoreStore;
   private highScoreStorage: StringStorage | undefined;
   private gameOverRecorded = false;
@@ -492,7 +498,7 @@ export class SandfallGameComponent extends Component {
     this.modalSummaryLabel.lineHeight = 24;
     this.modalSummaryLabel.color = new Color(194, 207, 230, 255);
 
-    const action = this.createButton(cardNode, "ModalAction", 0, -67, GAME_OVER_MODAL_BUTTON_WIDTH, 48, "再来一局");
+    const action = this.createButton(cardNode, "ModalAction", 0, -67, TWO_BUTTON_MODAL_WIDTH, 48, "再来一局");
     this.modalActionNode = action.node;
     this.modalActionLabel = action.label;
     this.modalActionVisual = action;
@@ -500,18 +506,24 @@ export class SandfallGameComponent extends Component {
     action.node.on(Node.EventType.TOUCH_END, this.onModalAction, this);
 
     // layoutModalButtons owns the row positions; these are placeholders.
-    const home = this.createButton(cardNode, "ModalHome", 0, -67, GAME_OVER_MODAL_BUTTON_WIDTH, 48, "返回首页");
+    const home = this.createButton(cardNode, "ModalHome", 0, -67, TWO_BUTTON_MODAL_WIDTH, 48, "返回首页");
     this.modalHomeNode = home.node;
     this.modalHomeVisual = home;
     this.createButtonIcon(home, "ModalHomeIcon", 22, -42);
     home.node.on(Node.EventType.TOUCH_END, this.onModalHome, this);
     home.node.active = false;
 
-    const restart = this.createButton(cardNode, "ModalRestart", 0, -67, PAUSED_MODAL_BUTTON_WIDTH, 48, "重新开始");
+    const restart = this.createButton(cardNode, "ModalRestart", 0, -67, THREE_BUTTON_MODAL_WIDTH, 48, "重新开始");
     this.modalRestartNode = restart.node;
     this.modalRestartVisual = restart;
     restart.node.on(Node.EventType.TOUCH_END, this.onModalRestart, this);
     restart.node.active = false;
+
+    const ranking = this.createButton(cardNode, "ModalRanking", 0, -67, THREE_BUTTON_MODAL_WIDTH, 48, "排行榜");
+    this.modalRankingNode = ranking.node;
+    this.modalRankingVisual = ranking;
+    ranking.node.on(Node.EventType.TOUCH_END, this.onModalRanking, this);
+    ranking.node.active = false;
 
     this.modalHintLabel = this.createLabel(cardNode, "ModalHint", 0, -119, 240, 24, 12);
     this.modalHintLabel.color = new Color(130, 148, 181, 255);
@@ -733,13 +745,20 @@ export class SandfallGameComponent extends Component {
       this.pauseButtonVisual.label.node.active = pauseFrame === null;
     }
 
-    this.layoutModalButtons(paused);
+    const showRanking = gameOver && this.leaderboard.available;
+    this.layoutModalButtons(paused, showRanking);
 
-    // Three buttons share the paused row, leaving no room beside a label for an
-    // icon, so the paused card runs on text alone.
-    const actionFrame = paused ? null : gameOver ? this.restartIconFrame : null;
+    // A three-button row is too narrow for an icon beside its label, so those
+    // rows run on text alone.
+    const threeAcross = paused || showRanking;
+    const actionFrame = threeAcross || !gameOver ? null : this.restartIconFrame;
     this.applyButtonIconLayout(this.modalActionVisual, actionFrame, 12, 80);
-    this.applyButtonIconLayout(this.modalHomeVisual, paused ? null : this.homeIconFrame, 12, 80);
+    this.applyButtonIconLayout(
+      this.modalHomeVisual,
+      threeAcross ? null : this.homeIconFrame,
+      12,
+      80,
+    );
 
     if (this.modalDecorationSprite !== null) {
       const decorationFrame = paused
@@ -752,25 +771,29 @@ export class SandfallGameComponent extends Component {
     }
   }
 
-  private layoutModalButtons(paused: boolean): void {
+  private layoutModalButtons(paused: boolean, showRanking: boolean): void {
     if (this.modalRestartNode !== null) {
       this.modalRestartNode.active = paused;
+    }
+    if (this.modalRankingNode !== null) {
+      this.modalRankingNode.active = showRanking;
     }
     if (this.modalHomeNode !== null) {
       this.modalHomeNode.active = true;
     }
-    if (paused) {
-      this.resizeButton(this.modalActionVisual, PAUSED_MODAL_BUTTON_WIDTH);
-      this.resizeButton(this.modalHomeVisual, PAUSED_MODAL_BUTTON_WIDTH);
-      this.modalActionNode?.setPosition(-PAUSED_MODAL_BUTTON_SPACING, -67);
+    if (paused || showRanking) {
+      this.resizeButton(this.modalActionVisual, THREE_BUTTON_MODAL_WIDTH);
+      this.resizeButton(this.modalHomeVisual, THREE_BUTTON_MODAL_WIDTH);
+      this.modalActionNode?.setPosition(-THREE_BUTTON_MODAL_SPACING, -67);
       this.modalRestartNode?.setPosition(0, -67);
-      this.modalHomeNode?.setPosition(PAUSED_MODAL_BUTTON_SPACING, -67);
+      this.modalRankingNode?.setPosition(0, -67);
+      this.modalHomeNode?.setPosition(THREE_BUTTON_MODAL_SPACING, -67);
       return;
     }
-    this.resizeButton(this.modalActionVisual, GAME_OVER_MODAL_BUTTON_WIDTH);
-    this.resizeButton(this.modalHomeVisual, GAME_OVER_MODAL_BUTTON_WIDTH);
-    this.modalActionNode?.setPosition(-GAME_OVER_MODAL_BUTTON_SPACING, -67);
-    this.modalHomeNode?.setPosition(GAME_OVER_MODAL_BUTTON_SPACING, -67);
+    this.resizeButton(this.modalActionVisual, TWO_BUTTON_MODAL_WIDTH);
+    this.resizeButton(this.modalHomeVisual, TWO_BUTTON_MODAL_WIDTH);
+    this.modalActionNode?.setPosition(-TWO_BUTTON_MODAL_SPACING, -67);
+    this.modalHomeNode?.setPosition(TWO_BUTTON_MODAL_SPACING, -67);
   }
 
   private resizeButton(button: UiButtonVisual | null, width: number): void {
@@ -2121,6 +2144,9 @@ export class SandfallGameComponent extends Component {
 
     if (!this.gameOverRecorded) {
       this.highScoreStore.record(this.session.score);
+      // Hosting the score is also what makes this player visible on friends'
+      // rankings, so upload every run rather than only new personal bests.
+      this.leaderboard.submitScore(this.session.score);
       this.gameOverRecorded = true;
     }
     if (this.modalTitleLabel !== null) this.modalTitleLabel.string = "游戏结束";
@@ -2807,6 +2833,17 @@ export class SandfallGameComponent extends Component {
     }
     this.feedback.unlock();
     this.startNewGame();
+  }
+
+  private onModalRanking(): void {
+    if (this.session.phase !== "GameOver") {
+      return;
+    }
+    this.feedback.unlock();
+    this.feedback.trigger("ui");
+    // The host draws the list over the game canvas; nothing to render here, and
+    // a failure just leaves the game over card as it was.
+    void this.leaderboard.showFriendRanking();
   }
 
   private onModalHome(): void {

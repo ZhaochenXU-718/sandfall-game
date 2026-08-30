@@ -51,6 +51,7 @@ Cocos 原型的场景接入步骤见 [`docs/cocos-prototype-setup.md`](docs/coco
 10. [排行榜公平性备忘](docs/10-ranking-fairness.md)
 11. [macOS 开发环境迁移指南](docs/11-macos-migration.md)
 12. [美术资源制作与实装清单](docs/12-art-asset-production-list.md)
+13. [激励广告变现接入方案](docs/13-ad-monetization.md)
 
 ## MVP 范围
 
