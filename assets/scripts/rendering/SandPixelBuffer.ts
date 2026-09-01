@@ -31,6 +31,8 @@ export const DEFAULT_SAND_PALETTE: readonly RgbaColor[] = Object.freeze([
   Object.freeze({ r: 78, g: 205, b: 196, a: 255 }),
   Object.freeze({ r: 91, g: 141, b: 239, a: 255 }),
   Object.freeze({ r: 166, g: 108, b: 255, a: 255 }),
+  // Lime fills the widest hue gap (~95 deg) left by coral/amber/teal/blue/violet.
+  Object.freeze({ r: 132, g: 214, b: 96, a: 255 }),
 ]);
 
 /** Converts color ids to a reusable RGBA8888 upload buffer. */

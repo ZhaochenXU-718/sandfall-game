@@ -71,7 +71,7 @@ import {
 
 const { ccclass, property } = _decorator;
 const CLASSIC_MIN_COLOR_COUNT = 2;
-const CLASSIC_MAX_COLOR_COUNT = 5;
+const CLASSIC_MAX_COLOR_COUNT = 6;
 const CLASSIC_FALL_INTERVALS_MS = [900, 750, 600, 500, 400, 300] as const;
 // Paused always shows three buttons; game over does too once a ranking host is
 // present. Three across leaves no room for an icon beside a four-character label.

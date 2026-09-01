@@ -3,7 +3,10 @@ import {
   CLEARS_PER_LEVEL,
   DEFAULT_LEVEL_FALL_INTERVALS_MS,
   DEFAULT_RULES,
+  PIECE_CELL_COUNT,
   PROGRESSIVE_COLOR_UNLOCK_LEVEL,
+  PROGRESSIVE_UNLOCKED_COLOR_COUNT,
+  grainsPerPiece,
   colorCountForLevel,
   levelForClearCount,
   normalFallIntervalForLevel,
@@ -20,7 +23,7 @@ describe("DEFAULT_RULES", () => {
     expect(DEFAULT_RULES.clearEffectDurationMs).toBe(420);
     expect(DEFAULT_RULES.softDropPointsPerRow).toBe(1);
     expect(DEFAULT_RULES.hardDropPointsPerRow).toBe(2);
-    expect(DEFAULT_RULES.spanningComponentBonus).toBe(200);
+    expect(DEFAULT_RULES.clearedComponentBonus).toBe(200);
     expect(DEFAULT_RULES.chainMultiplierStep).toBe(0.5);
     expect(DEFAULT_RULES.macroWidth).toBe(12);
     expect(DEFAULT_RULES.macroHeight).toBe(20);
@@ -42,9 +45,22 @@ describe("DEFAULT_RULES", () => {
   it("unlocks the fifth color at progressive level 4 but keeps classic rules fixed", () => {
     expect(PROGRESSIVE_COLOR_UNLOCK_LEVEL).toBe(4);
     expect(colorCountForLevel(4, 3, "progressive")).toBe(4);
-    expect(colorCountForLevel(4, 4, "progressive")).toBe(5);
+    expect(colorCountForLevel(4, 4, "progressive")).toBe(PROGRESSIVE_UNLOCKED_COLOR_COUNT);
     expect(colorCountForLevel(3, 6, "classic")).toBe(3);
     expect(levelForClearCount(100, "classic")).toBe(1);
     expect(normalFallIntervalForLevel(750, 6, "classic")).toBe(750);
+  });
+});
+
+describe("minBlobGrains", () => {
+  it("asks for three pieces' worth of one colour", () => {
+    // Measured cliff: below three pieces random play stumbles into clears and
+    // nothing is loseable; above it, farming one colour per zone dominates 3x.
+    expect(DEFAULT_RULES.minBlobGrains).toBe(3 * grainsPerPiece(DEFAULT_RULES));
+  });
+
+  it("derives the piece grain count from the rasterisation size", () => {
+    expect(grainsPerPiece({ grainsPerCell: 9 })).toBe(324);
+    expect(grainsPerPiece({ grainsPerCell: 1 })).toBe(PIECE_CELL_COUNT);
   });
 });

@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { GameSession } from "../../assets/scripts/application/GameSession";
 import { I_PIECE, O_PIECE } from "../../assets/scripts/core/PieceDefinitions";
-import type { RulesConfig } from "../../assets/scripts/core/RulesConfig";
+import {
+  PROGRESSIVE_UNLOCKED_COLOR_COUNT,
+  type RulesConfig,
+} from "../../assets/scripts/core/RulesConfig";
 
 const STEP = 0.1;
 
@@ -22,8 +25,11 @@ function rules(overrides: Partial<RulesConfig> = {}): RulesConfig {
     maxLockResets: 2,
     softDropPointsPerRow: 1,
     hardDropPointsPerRow: 2,
-    spanningComponentBonus: 200,
+    clearedComponentBonus: 200,
     chainMultiplierStep: 0.5,
+    // These cases assert on tiny boards, so 1 keeps their original "any
+    // component clears" semantics.
+    minBlobGrains: 1,
     ...overrides,
   };
 }
@@ -110,7 +116,7 @@ describe("GameSession", () => {
       }
       if (clear === 14) {
         expect(session.level).toBe(4);
-        expect(session.activeColorCount).toBe(5);
+        expect(session.activeColorCount).toBe(PROGRESSIVE_UNLOCKED_COLOR_COUNT);
       }
     }
 

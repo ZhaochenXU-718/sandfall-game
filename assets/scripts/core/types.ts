@@ -11,6 +11,6 @@ export interface SandStepResult {
 export interface ConnectivityResult {
   /** Reused by the resolver; consume before calling resolve() again. */
   readonly removalMask: Uint8Array;
-  spanningComponentCount: number;
+  clearedComponentCount: number;
   markedCellCount: number;
 }

@@ -42,7 +42,9 @@ for (let index = 0; index < cells.length; index += 1) {
 
 const board = new Board(WIDTH, HEIGHT, cells);
 const simulation = new SandSimulation(board, randomizer);
-const connectivity = new ConnectivityResolver(board);
+// 1 keeps the benchmark measuring the same flood fill as before; the threshold
+// only gates marking, which happens after the traversal cost is already paid.
+const connectivity = new ConnectivityResolver(board, 1);
 const sandSubstepMs = averageMilliseconds(1_000, () => {
   simulation.step();
 });

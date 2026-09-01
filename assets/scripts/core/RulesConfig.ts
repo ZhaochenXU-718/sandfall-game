@@ -14,8 +14,25 @@ export interface RulesConfig {
   readonly maxLockResets: number;
   readonly softDropPointsPerRow: number;
   readonly hardDropPointsPerRow: number;
-  readonly spanningComponentBonus: number;
+  readonly clearedComponentBonus: number;
   readonly chainMultiplierStep: number;
+  /**
+   * Smallest same-colour component that clears. Position is irrelevant; only
+   * size counts.
+   *
+   * Three pieces' worth sits on a measured cliff. Below it random placement
+   * stumbles into clears and nothing is loseable; above it the only workable
+   * play is farming one colour per zone, which beats everything else 3x. See
+   * docs/02-game-rules.md section 5.
+   */
+  readonly minBlobGrains: number;
+}
+
+/** Every piece is a tetromino, so each lock rasterises to this many grains. */
+export const PIECE_CELL_COUNT = 4;
+
+export function grainsPerPiece(config: Pick<RulesConfig, "grainsPerCell">): number {
+  return PIECE_CELL_COUNT * config.grainsPerCell * config.grainsPerCell;
 }
 
 export type GameMode = "progressive" | "classic";
@@ -82,11 +99,15 @@ export function colorCountForLevel(baseColorCount: number, level: number, mode: 
   return baseColorCount;
 }
 
+const DEFAULT_GRAINS_PER_CELL = 9;
+/** Blob threshold in whole pieces; 3 measured as the balanced setting. */
+const DEFAULT_MIN_BLOB_PIECES = 3;
+
 export const DEFAULT_RULES: Readonly<RulesConfig> = Object.freeze({
-  version: "0.12.0",
+  version: "0.15.0",
   macroWidth: 12,
   macroHeight: 20,
-  grainsPerCell: 9,
+  grainsPerCell: DEFAULT_GRAINS_PER_CELL,
   colorCount: 4,
   fixedHz: 60,
   stableTicks: 4,
@@ -98,8 +119,10 @@ export const DEFAULT_RULES: Readonly<RulesConfig> = Object.freeze({
   maxLockResets: 10,
   softDropPointsPerRow: 1,
   hardDropPointsPerRow: 2,
-  spanningComponentBonus: 200,
+  clearedComponentBonus: 200,
   chainMultiplierStep: 0.5,
+  minBlobGrains: DEFAULT_MIN_BLOB_PIECES
+    * PIECE_CELL_COUNT * DEFAULT_GRAINS_PER_CELL * DEFAULT_GRAINS_PER_CELL,
 });
 
 export function sandBoardSize(config: RulesConfig): {

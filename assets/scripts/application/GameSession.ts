@@ -477,10 +477,10 @@ export class GameSession {
     }
     this.currentChain += 1;
     const clearBase = cleared
-      + result.spanningComponentCount * this.rules.spanningComponentBonus;
+      + result.clearedComponentCount * this.rules.clearedComponentBonus;
     const multiplier = 1 + (this.currentChain - 1) * this.rules.chainMultiplierStep;
     this.currentScore += Math.round(clearBase * multiplier);
-    this.completedClearCount += result.spanningComponentCount;
+    this.completedClearCount += result.clearedComponentCount;
     this.pieceRandomizer?.setColorCount(this.activeColorCount);
     this.highestChain = Math.max(this.highestChain, this.currentChain);
     this.pendingClear = undefined;
@@ -559,7 +559,7 @@ export class GameSession {
       collision,
       rasterizer: new PieceRasterizer(board, collision),
       sandSimulation: new SandSimulation(board, new Randomizer(seed ^ 0xa511e9b3)),
-      connectivity: new ConnectivityResolver(board),
+      connectivity: new ConnectivityResolver(board, this.rules.minBlobGrains),
       stableDetector: new StableDetector(this.rules.stableTicks),
     };
   }
@@ -573,6 +573,7 @@ export class GameSession {
       rules.fixedHz,
       rules.stableTicks,
       rules.sandSubsteps,
+      rules.minBlobGrains,
     ];
     if (positiveIntegers.some((value) => !Number.isInteger(value) || value <= 0)) {
       throw new RangeError("Board, color, frequency, and stability rules must be positive integers");
@@ -604,8 +605,8 @@ export class GameSession {
     if (!Number.isInteger(rules.softDropPointsPerRow) || rules.softDropPointsPerRow < 0) {
       throw new RangeError("softDropPointsPerRow must be a non-negative integer");
     }
-    if (!Number.isInteger(rules.spanningComponentBonus) || rules.spanningComponentBonus < 0) {
-      throw new RangeError("spanningComponentBonus must be a non-negative integer");
+    if (!Number.isInteger(rules.clearedComponentBonus) || rules.clearedComponentBonus < 0) {
+      throw new RangeError("clearedComponentBonus must be a non-negative integer");
     }
     if (!Number.isFinite(rules.chainMultiplierStep) || rules.chainMultiplierStep < 0) {
       throw new RangeError("chainMultiplierStep must be non-negative");
